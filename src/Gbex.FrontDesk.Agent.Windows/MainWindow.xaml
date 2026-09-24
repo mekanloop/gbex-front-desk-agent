@@ -1,0 +1,86 @@
+<Window x:Class="Gbex.FrontDesk.Agent.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="GBEX Front Desk"
+        Height="900"
+        Width="1440"
+        MinHeight="720"
+        MinWidth="1100"
+        Background="#F4F6FA">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="#190A3C" Padding="14,10">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="GBEX" Foreground="#FFED00" FontSize="23" FontWeight="Black" Margin="0,0,18,0" />
+                    <TextBlock Text="Front Desk Agent" Foreground="White" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" />
+                    <TextBlock x:Name="VersionText" Foreground="#C8C1D9" FontSize="11" VerticalAlignment="Center" Margin="8,4,0,0" />
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="RefreshDevicesButton" Click="RefreshDevicesButton_Click" Margin="0,0,8,0" Padding="12,7" Content="Cihazları Tara" />
+                    <Button x:Name="ScanIdentityButton" Click="ScanIdentityButton_Click" Margin="0,0,8,0" Padding="12,7" Content="Kimliği Tara" />
+                    <Button x:Name="UploadFileButton" Click="UploadFileButton_Click" Margin="0,0,8,0" Padding="12,7" Content="Kimlik Yükle" />
+                    <Button x:Name="CaptureSignatureButton" Click="CaptureSignatureButton_Click" Margin="0,0,8,0" Padding="12,7" Content="İmza Al" />
+                    <Button x:Name="UploadSignatureButton" Click="UploadSignatureButton_Click" Margin="0,0,8,0" Padding="12,7" Content="İmza Yükle" />
+                    <Button x:Name="ReloadButton" Click="ReloadButton_Click" Padding="12,7" Content="Paneli Yenile" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="320" />
+            </Grid.ColumnDefinitions>
+
+            <wv2:WebView2 x:Name="FrontDeskWebView" Grid.Column="0" />
+
+            <Border Grid.Column="1" Background="White" BorderBrush="#E5E7EB" BorderThickness="1,0,0,0">
+                <ScrollViewer>
+                    <StackPanel Margin="18">
+                        <TextBlock Text="Native Cihaz Durumu" FontSize="18" FontWeight="Black" Foreground="#190A3C" />
+                        <TextBlock Text="USB tarayıcı, Wacom imza cihazı ve yükleme durumları burada görünür. Tüm cihaz işlemleri bu uygulamanın içindedir; ayrı GBEX köprü uygulaması kullanılmaz." TextWrapping="Wrap" Margin="0,4,0,18" Foreground="#64748B" />
+
+                        <Border Background="#F8FAFC" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Tarayıcı" FontWeight="Bold" Foreground="#190A3C" />
+                                <TextBlock x:Name="ScannerStatusText" Text="Kontrol ediliyor..." TextWrapping="Wrap" Margin="0,6,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#F8FAFC" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Wacom STU" FontWeight="Bold" Foreground="#190A3C" />
+                                <TextBlock x:Name="WacomStatusText" Text="Kontrol ediliyor..." TextWrapping="Wrap" Margin="0,6,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#FFFDE7" BorderBrush="#FFED00" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Son İşlem" FontWeight="Bold" Foreground="#190A3C" />
+                                <TextBlock x:Name="LastActionText" Text="Uygulama başlatıldı." TextWrapping="Wrap" Margin="0,6,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Not" FontWeight="Bold" Foreground="#190A3C" Margin="0,8,0,4" />
+                        <TextBlock Text="Kimlik tarama için cihazın Windows'ta WIA scanner olarak kurulu olması gerekir. Wacom imza yakalama için Wacom STU driver/SDK gerekir; cihaz algılama ve yükleme native yapılır." TextWrapping="Wrap" Foreground="#64748B" FontSize="12" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#E5E7EB" BorderThickness="0,1,0,0" Padding="12,7">
+            <DockPanel>
+                <TextBlock x:Name="ConnectionStatusText" DockPanel.Dock="Left" Text="Hazırlanıyor..." Foreground="#475569" />
+                <TextBlock DockPanel.Dock="Right" Text="Tek uygulama: web panel + native USB cihaz modülleri" Foreground="#64748B" FontSize="12" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

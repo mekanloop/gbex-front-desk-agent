@@ -1,0 +1,14 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+*.log
+installer-output/
+publish/
+TestResults/
+*.zip
+*.msi
+*.exe
+!installer/setup.iss
