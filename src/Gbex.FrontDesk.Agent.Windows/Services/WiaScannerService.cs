@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace Gbex.FrontDesk.Agent.Windows.Services;
