@@ -42,9 +42,11 @@ jobs:
           -p:Version=${{ env.APP_VERSION }}
           --output publish/GbexFrontDeskAgent
 
-      - name: Install Inno Setup
+      - name: Package customer zip
         shell: pwsh
-        run: choco install innosetup --yes --no-progress
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Compress-Archive -Path publish\GbexFrontDeskAgent\* -DestinationPath release\GbexFrontDeskAgent-win-x64.zip -Force
 
       - name: Upload raw publish artifact
         uses: actions/upload-artifact@v4
@@ -53,20 +55,11 @@ jobs:
           path: publish/GbexFrontDeskAgent/**
           if-no-files-found: error
 
-      - name: Build installer
-        shell: pwsh
-        run: |
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) {
-            throw "Inno Setup is not available at $iscc"
-          }
-          & $iscc "/DAppVersion=$env:APP_VERSION" installer\setup.iss
-
-      - name: Upload installer artifact
+      - name: Upload customer zip artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GbexFrontDeskAgentSetup
-          path: installer-output/GbexFrontDeskAgentSetup.exe
+          name: GbexFrontDeskAgent-win-x64-zip
+          path: release/GbexFrontDeskAgent-win-x64.zip
           if-no-files-found: error
 
       - name: Publish customer download release
@@ -76,7 +69,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "v$env:APP_VERSION"
-          $asset = "installer-output/GbexFrontDeskAgentSetup.exe"
+          $asset = "release/GbexFrontDeskAgent-win-x64.zip"
           $notes = @"
           GBEX Front Desk Agent $env:APP_VERSION
 
@@ -84,6 +77,7 @@ jobs:
           - Opens the live /admin/front-desk panel with persistent WebView2 login.
           - Detects USB scanner/Wacom devices inside the same app.
           - Supports native WIA identity scan upload to GBEX.
+          - Download the zip, extract it, and run GbexFrontDeskAgent.exe.
           "@
 
           if (gh release view $tag 2>$null) {
