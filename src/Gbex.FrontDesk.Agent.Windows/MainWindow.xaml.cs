@@ -3,7 +3,6 @@ using System.Windows;
 using Microsoft.Win32;
 using Microsoft.Web.WebView2.Core;
 using Gbex.FrontDesk.Agent.Windows.Services;
-using Forms = System.Windows.Forms;
 
 namespace Gbex.FrontDesk.Agent.Windows;
 
@@ -189,19 +188,26 @@ public partial class MainWindow : Window
             return;
         }
 
-        using var dialog = new Forms.FolderBrowserDialog
+        var dialog = new OpenFileDialog
         {
-            Description = "Yumi tarayıcı yazılımının kimlik dosyalarını kaydettiği klasörü seçin.",
-            UseDescriptionForTitle = true,
-            ShowNewFolderButton = true,
+            Title = "Yumi tarayıcı yazılımının kaydettiği klasörden örnek bir dosya seçin",
+            Filter = "Kimlik dosyaları|*.png;*.jpg;*.jpeg;*.pdf|Tüm dosyalar|*.*",
+            CheckFileExists = true,
+            Multiselect = false,
         };
 
-        if (dialog.ShowDialog() != Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FileName))
         {
             return;
         }
 
-        StartWatchFolder(dialog.SelectedPath, persist: true);
+        var folder = Path.GetDirectoryName(dialog.FileName);
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            return;
+        }
+
+        StartWatchFolder(folder, persist: true);
     }
 
     private void TryResumeWatchFolder()
