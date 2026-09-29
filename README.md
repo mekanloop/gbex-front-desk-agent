@@ -8,16 +8,18 @@ Windows front desk application for GBEX counter sales.
 - Detects USB-attached front desk devices inside the same app.
 - Scans ID documents through Windows WIA-compatible scanners.
 - Uploads scanned ID files to the logged-in GBEX front desk session.
+- Watches the scanner output folder and auto-uploads new ID files when the scanner is not exposed as WIA.
 - Detects Wacom STU signature pads and exposes status in the app.
 - Uploads signature images to the logged-in GBEX front desk session.
+- Opens an in-app signature capture screen when Wacom STU SDK is not installed, so the sales workflow is not blocked.
 - Keeps Wacom integration inside the same native app; no separate GBEX bridge/service is required.
 - Keeps device work native; there is no separate local bridge/service for operators to run.
 
 ## First production target
 
 - URL: `https://app.gbex.com.tr/admin/front-desk`
-- Scanner: Yumi YC-3040 DN, if installed as a Windows WIA scanner.
-- Signature pad: Wacom STU-430, with Wacom drivers/SDK installed on the PC.
+- Scanner: Yumi YC-3040 DN. Direct scan works if installed as a Windows WIA scanner; otherwise configure the scanner software to save files to a folder and use `Tarama Klasörü İzle`.
+- Signature pad: Wacom STU-430. Device detection is native. True STU screen pen capture requires Wacom drivers/SDK; the app also has a built-in signature capture fallback for immediate operation.
 
 ## Build
 
@@ -37,9 +39,9 @@ GitHub Actions builds the installer and publishes `GbexFrontDeskAgentSetup.exe` 
 2. Install Wacom STU drivers/SDK before signature capture is used.
 3. Start GBEX Front Desk Agent.
 4. Log in with the front desk staff account.
-5. Use the native toolbar to scan identity documents, upload signatures, and check USB device status.
+5. Use the native toolbar to scan identity documents, watch the scanner output folder, capture/upload signatures, and check USB device status.
 
 ## Device integration notes
 
-- Yumi YC-3040 DN: must appear in Windows as a WIA scanner. The app calls Windows WIA directly and uploads the scanned document to GBEX.
-- Wacom STU-430: device detection is native. Real-time pen capture requires Wacom's STU SDK/driver on the target Windows PC. The app does not require a separate GBEX bridge process.
+- Yumi YC-3040 DN: direct capture uses Windows WIA. If the device is TWAIN/vendor-software only, use the watched-folder mode and set the scanner software output folder to the same folder.
+- Wacom STU-430: device detection is native. Real-time pen capture from the STU screen requires Wacom's STU SDK/driver on the target Windows PC. Until that SDK is installed, `İmza Al` opens the in-app signature capture screen and uploads the saved signature through the same GBEX API.

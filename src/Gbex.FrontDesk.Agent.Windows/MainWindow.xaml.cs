@@ -3,16 +3,32 @@ using System.Windows;
 using Microsoft.Win32;
 using Microsoft.Web.WebView2.Core;
 using Gbex.FrontDesk.Agent.Windows.Services;
+using Forms = System.Windows.Forms;
 
 namespace Gbex.FrontDesk.Agent.Windows;
 
 public partial class MainWindow : Window
 {
     private static readonly Uri FrontDeskUri = new("https://app.gbex.com.tr/admin/front-desk");
+    private static readonly string AppDataFolder = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "GBEX",
+        "FrontDeskAgent"
+    );
+    private static readonly string WatchFolderConfigPath = Path.Combine(AppDataFolder, "identity-watch-folder.txt");
+    private static readonly HashSet<string> WatchableIdentityExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".pdf",
+    };
 
     private readonly DeviceMonitor _deviceMonitor = new();
     private readonly WiaScannerService _scanner = new();
     private readonly WacomSignatureService _wacom = new();
+    private readonly HashSet<string> _processedWatchFiles = new(StringComparer.OrdinalIgnoreCase);
+    private FileSystemWatcher? _identityWatcher;
 
     public MainWindow()
     {
@@ -25,6 +41,7 @@ public partial class MainWindow : Window
     {
         await InitializeWebViewAsync();
         RefreshDeviceStatus();
+        TryResumeWatchFolder();
     }
 
     private async Task InitializeWebViewAsync()
@@ -32,12 +49,7 @@ public partial class MainWindow : Window
         try
         {
             ConnectionStatusText.Text = "WebView hazırlanıyor...";
-            var userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "GBEX",
-                "FrontDeskAgent",
-                "WebView2"
-            );
+            var userDataFolder = Path.Combine(AppDataFolder, "WebView2");
             var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
             await FrontDeskWebView.EnsureCoreWebView2Async(env);
             FrontDeskWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
@@ -100,12 +112,33 @@ public partial class MainWindow : Window
 
     private async void CaptureSignatureButton_Click(object sender, RoutedEventArgs e)
     {
-        await RunBusyAsync("Wacom imza cihazı hazırlanıyor...", async cancellationToken =>
+        if (!_wacom.IsSdkAvailable())
         {
-            var file = await _wacom.CaptureSignatureAsync(cancellationToken);
-            LastActionText.Text = $"İmza alındı: {file}";
-            await UploadSignatureFileAsync(file, cancellationToken);
-        });
+            LastActionText.Text = "Wacom STU SDK hazır değil; uygulama içi imza ekranı açılıyor.";
+        }
+        else
+        {
+            LastActionText.Text = "Wacom STU SDK algılandı; bu sürümde güvenli imza yükleme için uygulama içi imza ekranı açılıyor.";
+        }
+
+        await CaptureSignatureWithAppCanvasAsync();
+    }
+
+    private async Task CaptureSignatureWithAppCanvasAsync()
+    {
+        var window = new SignatureCaptureWindow
+        {
+            Owner = this,
+        };
+
+        if (window.ShowDialog() != true || string.IsNullOrWhiteSpace(window.CapturedFilePath))
+        {
+            LastActionText.Text = "İmza alma iptal edildi.";
+            return;
+        }
+
+        await RunBusyAsync("İmza sisteme yükleniyor...", cancellationToken =>
+            UploadSignatureFileAsync(window.CapturedFilePath, cancellationToken));
     }
 
     private async void UploadSignatureButton_Click(object sender, RoutedEventArgs e)
@@ -147,6 +180,164 @@ public partial class MainWindow : Window
         LastActionText.Text = $"İmza dosyası front desk paneline yüklendi: {Path.GetFileName(filePath)}";
     }
 
+    private void WatchFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_identityWatcher is not null)
+        {
+            StopWatchFolder("Otomatik kimlik klasörü izleme kapatıldı.");
+            TryDeleteWatchFolderConfig();
+            return;
+        }
+
+        using var dialog = new Forms.FolderBrowserDialog
+        {
+            Description = "Yumi tarayıcı yazılımının kimlik dosyalarını kaydettiği klasörü seçin.",
+            UseDescriptionForTitle = true,
+            ShowNewFolderButton = true,
+        };
+
+        if (dialog.ShowDialog() != Forms.DialogResult.OK || string.IsNullOrWhiteSpace(dialog.SelectedPath))
+        {
+            return;
+        }
+
+        StartWatchFolder(dialog.SelectedPath, persist: true);
+    }
+
+    private void TryResumeWatchFolder()
+    {
+        try
+        {
+            if (!File.Exists(WatchFolderConfigPath))
+            {
+                return;
+            }
+
+            var folder = File.ReadAllText(WatchFolderConfigPath).Trim();
+            if (Directory.Exists(folder))
+            {
+                StartWatchFolder(folder, persist: false);
+            }
+        }
+        catch (Exception ex)
+        {
+            WatchFolderStatusText.Text = $"Önceki tarama klasörü açılamadı: {ex.Message}";
+        }
+    }
+
+    private void StartWatchFolder(string folder, bool persist)
+    {
+        StopWatchFolder(null);
+
+        _identityWatcher = new FileSystemWatcher(folder)
+        {
+            IncludeSubdirectories = false,
+            EnableRaisingEvents = true,
+            Filter = "*.*",
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.Size,
+        };
+
+        _identityWatcher.Created += IdentityWatcher_FileDetected;
+        _identityWatcher.Renamed += IdentityWatcher_FileDetected;
+
+        if (persist)
+        {
+            Directory.CreateDirectory(AppDataFolder);
+            File.WriteAllText(WatchFolderConfigPath, folder);
+        }
+
+        WatchFolderButton.Content = "Klasör İzlemeyi Durdur";
+        WatchFolderStatusText.Text = $"Açık: {folder}";
+        LastActionText.Text = "Tarama klasörü izleniyor. Bu klasöre düşen yeni kimlik dosyaları otomatik yüklenecek.";
+    }
+
+    private void StopWatchFolder(string? status)
+    {
+        if (_identityWatcher is not null)
+        {
+            _identityWatcher.EnableRaisingEvents = false;
+            _identityWatcher.Created -= IdentityWatcher_FileDetected;
+            _identityWatcher.Renamed -= IdentityWatcher_FileDetected;
+            _identityWatcher.Dispose();
+            _identityWatcher = null;
+        }
+
+        WatchFolderButton.Content = "Tarama Klasörü İzle";
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            WatchFolderStatusText.Text = "Kapalı.";
+            LastActionText.Text = status;
+        }
+    }
+
+    private static void TryDeleteWatchFolderConfig()
+    {
+        try
+        {
+            if (File.Exists(WatchFolderConfigPath))
+            {
+                File.Delete(WatchFolderConfigPath);
+            }
+        }
+        catch
+        {
+            // Best effort only; failing to delete the local preference must not block operators.
+        }
+    }
+
+    private void IdentityWatcher_FileDetected(object sender, FileSystemEventArgs e)
+    {
+        if (!WatchableIdentityExtensions.Contains(Path.GetExtension(e.FullPath)))
+        {
+            return;
+        }
+
+        if (!_processedWatchFiles.Add(e.FullPath))
+        {
+            return;
+        }
+
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            await RunBusyAsync($"Yeni kimlik dosyası yakalandı: {Path.GetFileName(e.FullPath)}", async cancellationToken =>
+            {
+                var readyPath = await WaitForFileReadyAsync(e.FullPath, cancellationToken);
+                await UploadIdentityFileAsync(readyPath, cancellationToken);
+            });
+        });
+    }
+
+    private static async Task<string> WaitForFileReadyAsync(string filePath, CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (File.Exists(filePath))
+            {
+                try
+                {
+                    await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    if (stream.Length > 0)
+                    {
+                        return filePath;
+                    }
+                }
+                catch (IOException)
+                {
+                    // Scanner software is still writing the file.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // Scanner software is still writing the file.
+                }
+            }
+
+            await Task.Delay(500, cancellationToken);
+        }
+
+        throw new IOException($"Taranan dosya okunabilir hale gelmedi: {filePath}");
+    }
+
     private void ReloadButton_Click(object sender, RoutedEventArgs e)
     {
         FrontDeskWebView.CoreWebView2?.Reload();
@@ -178,6 +369,7 @@ public partial class MainWindow : Window
     private void SetBusy(bool busy, string status)
     {
         ScanIdentityButton.IsEnabled = !busy;
+        WatchFolderButton.IsEnabled = !busy;
         UploadFileButton.IsEnabled = !busy;
         CaptureSignatureButton.IsEnabled = !busy;
         UploadSignatureButton.IsEnabled = !busy;

@@ -1,0 +1,56 @@
+<Window x:Class="Gbex.FrontDesk.Agent.Windows.SignatureCaptureWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GBEX İmza Al"
+        Height="520"
+        Width="780"
+        MinHeight="420"
+        MinWidth="640"
+        WindowStartupLocation="CenterOwner"
+        Background="#F4F6FA">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <TextBlock Text="Müşteri İmzası" FontSize="22" FontWeight="Black" Foreground="#190A3C" />
+            <TextBlock Text="Wacom STU SDK hazır değilse bu ekran acil kullanım için imzayı uygulama içinde yakalar ve GBEX sistemine yükler. Wacom SDK kurulduğunda cihazdan doğrudan yakalama modülü kullanılabilir."
+                       Foreground="#64748B"
+                       TextWrapping="Wrap"
+                       Margin="0,4,0,0" />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Background="White"
+                BorderBrush="#CBD5E1"
+                BorderThickness="2"
+                CornerRadius="14"
+                Padding="8">
+            <InkCanvas x:Name="SignatureCanvas"
+                       Background="White"
+                       EditingMode="Ink"
+                       UseCustomCursor="True" />
+        </Border>
+
+        <DockPanel Grid.Row="2" Margin="0,14,0,0">
+            <TextBlock DockPanel.Dock="Left"
+                       Text="İmza alanını mouse, dokunmatik ekran veya bağlı çizim girişi ile doldurun."
+                       VerticalAlignment="Center"
+                       Foreground="#64748B" />
+
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Click="ClearButton_Click" Content="Temizle" Padding="14,8" Margin="0,0,8,0" />
+                <Button Click="CancelButton_Click" Content="Vazgeç" Padding="14,8" Margin="0,0,8,0" />
+                <Button Click="SaveButton_Click"
+                        Content="İmzayı Kaydet ve Yükle"
+                        Padding="16,8"
+                        Background="#FFED00"
+                        Foreground="#190A3C"
+                        FontWeight="Bold" />
+            </StackPanel>
+        </DockPanel>
+    </Grid>
+</Window>

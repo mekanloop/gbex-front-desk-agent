@@ -26,6 +26,7 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <Button x:Name="RefreshDevicesButton" Click="RefreshDevicesButton_Click" Margin="0,0,8,0" Padding="12,7" Content="Cihazları Tara" />
                     <Button x:Name="ScanIdentityButton" Click="ScanIdentityButton_Click" Margin="0,0,8,0" Padding="12,7" Content="Kimliği Tara" />
+                    <Button x:Name="WatchFolderButton" Click="WatchFolderButton_Click" Margin="0,0,8,0" Padding="12,7" Content="Tarama Klasörü İzle" />
                     <Button x:Name="UploadFileButton" Click="UploadFileButton_Click" Margin="0,0,8,0" Padding="12,7" Content="Kimlik Yükle" />
                     <Button x:Name="CaptureSignatureButton" Click="CaptureSignatureButton_Click" Margin="0,0,8,0" Padding="12,7" Content="İmza Al" />
                     <Button x:Name="UploadSignatureButton" Click="UploadSignatureButton_Click" Margin="0,0,8,0" Padding="12,7" Content="İmza Yükle" />
@@ -46,7 +47,7 @@
                 <ScrollViewer>
                     <StackPanel Margin="18">
                         <TextBlock Text="Native Cihaz Durumu" FontSize="18" FontWeight="Black" Foreground="#190A3C" />
-                        <TextBlock Text="USB tarayıcı, Wacom imza cihazı ve yükleme durumları burada görünür. Tüm cihaz işlemleri bu uygulamanın içindedir; ayrı GBEX köprü uygulaması kullanılmaz." TextWrapping="Wrap" Margin="0,4,0,18" Foreground="#64748B" />
+                        <TextBlock Text="USB tarayıcı, Wacom imza cihazı ve yükleme durumları burada görünür. Web workflow aynı panelde çalışır; kimlik ve imza dosyaları bu uygulamadan GBEX database'ine API ile yüklenir." TextWrapping="Wrap" Margin="0,4,0,18" Foreground="#64748B" />
 
                         <Border Background="#F8FAFC" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,0,12">
                             <StackPanel>
@@ -69,8 +70,15 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Background="#F8FAFC" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Otomatik Kimlik Klasörü" FontWeight="Bold" Foreground="#190A3C" />
+                                <TextBlock x:Name="WatchFolderStatusText" Text="Kapalı. Yumi yazılımı taranan dosyayı klasöre kaydediyorsa bu klasör izlenebilir." TextWrapping="Wrap" Margin="0,6,0,0" />
+                            </StackPanel>
+                        </Border>
+
                         <TextBlock Text="Not" FontWeight="Bold" Foreground="#190A3C" Margin="0,8,0,4" />
-                        <TextBlock Text="Kimlik tarama için cihazın Windows'ta WIA scanner olarak kurulu olması gerekir. Wacom imza yakalama için Wacom STU driver/SDK gerekir; cihaz algılama ve yükleme native yapılır." TextWrapping="Wrap" Foreground="#64748B" FontSize="12" />
+                        <TextBlock Text="Kimlik için WIA varsa doğrudan tarama yapılır; WIA görünmüyorsa Yumi'nin tarama klasörü izlenerek yeni dosya otomatik yüklenir. Wacom STU için cihaz USB'de görünür ama gerçek STU ekranından imza yakalama Wacom STU SDK ister; SDK yoksa uygulama içi imza ekranı ile işlem bloklanmaz." TextWrapping="Wrap" Foreground="#64748B" FontSize="12" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>
