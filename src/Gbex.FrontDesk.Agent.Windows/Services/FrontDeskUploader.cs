@@ -8,10 +8,12 @@ namespace Gbex.FrontDesk.Agent.Windows.Services;
 public sealed class FrontDeskUploader
 {
     private readonly CoreWebView2 _webView;
+    private readonly Uri _baseUri;
 
-    public FrontDeskUploader(CoreWebView2 webView)
+    public FrontDeskUploader(CoreWebView2 webView, Uri baseUri)
     {
         _webView = webView;
+        _baseUri = baseUri;
     }
 
     public async Task UploadIdentityDocumentAsync(string filePath, CancellationToken cancellationToken)
@@ -49,14 +51,15 @@ public sealed class FrontDeskUploader
             throw new FileNotFoundException("Yüklenecek dosya bulunamadı.", filePath);
         }
 
-        var cookies = await _webView.CookieManager.GetCookiesAsync("https://app.gbex.com.tr");
+        var origin = _baseUri.GetLeftPart(UriPartial.Authority);
+        var cookies = await _webView.CookieManager.GetCookiesAsync(origin);
         var cookieHeader = string.Join("; ", cookies.Select(cookie => $"{cookie.Name}={cookie.Value}"));
         if (string.IsNullOrWhiteSpace(cookieHeader))
         {
             throw new InvalidOperationException("GBEX oturum çerezi bulunamadı. Önce front desk paneline giriş yapın.");
         }
 
-        using var client = new HttpClient { BaseAddress = new Uri("https://app.gbex.com.tr") };
+        using var client = new HttpClient { BaseAddress = new Uri(origin) };
         client.DefaultRequestHeaders.Add("Cookie", cookieHeader);
 
         await using var stream = File.OpenRead(filePath);

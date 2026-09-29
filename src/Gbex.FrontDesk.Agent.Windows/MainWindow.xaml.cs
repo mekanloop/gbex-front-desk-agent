@@ -8,7 +8,7 @@ namespace Gbex.FrontDesk.Agent.Windows;
 
 public partial class MainWindow : Window
 {
-    private static readonly Uri FrontDeskUri = new("https://app.gbex.com.tr/admin/front-desk");
+    private static readonly Uri FrontDeskUri = new("https://panel.gbex.com.tr/admin/front-desk");
     private static readonly string AppDataFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "GBEX",
@@ -86,6 +86,19 @@ public partial class MainWindow : Window
 
     private async void ScanIdentityButton_Click(object sender, RoutedEventArgs e)
     {
+        if (!_scanner.HasWiaScanner())
+        {
+            MessageBox.Show(
+                this,
+                "Yumi cihazı Windows'ta WIA scanner olarak görünmüyor. Şimdi Yumi yazılımının taramaları kaydettiği klasörü seçin; o klasöre düşen yeni kimlikler otomatik GBEX'e yüklenecek.",
+                "GBEX Front Desk",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information
+            );
+            SelectAndStartWatchFolder();
+            return;
+        }
+
         await RunBusyAsync("Kimlik taranıyor...", async cancellationToken =>
         {
             var file = await _scanner.ScanIdentityDocumentAsync(cancellationToken);
@@ -176,7 +189,7 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("Web panel henüz hazır değil.");
         }
 
-        var uploader = new FrontDeskUploader(FrontDeskWebView.CoreWebView2);
+        var uploader = new FrontDeskUploader(FrontDeskWebView.CoreWebView2, FrontDeskUri);
         await uploader.UploadIdentityDocumentAsync(filePath, cancellationToken);
         LastActionText.Text = $"Kimlik dosyası front desk paneline yüklendi: {Path.GetFileName(filePath)}";
     }
@@ -188,7 +201,7 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("Web panel henüz hazır değil.");
         }
 
-        var uploader = new FrontDeskUploader(FrontDeskWebView.CoreWebView2);
+        var uploader = new FrontDeskUploader(FrontDeskWebView.CoreWebView2, FrontDeskUri);
         await uploader.UploadSignatureImageAsync(filePath, cancellationToken);
         LastActionText.Text = $"İmza dosyası front desk paneline yüklendi: {Path.GetFileName(filePath)}";
     }
@@ -202,26 +215,23 @@ public partial class MainWindow : Window
             return;
         }
 
-        var dialog = new OpenFileDialog
+        SelectAndStartWatchFolder();
+    }
+
+    private void SelectAndStartWatchFolder()
+    {
+        var dialog = new OpenFolderDialog
         {
-            Title = "Yumi tarayıcı yazılımının kaydettiği klasörden örnek bir dosya seçin",
-            Filter = "Kimlik dosyaları|*.png;*.jpg;*.jpeg;*.pdf|Tüm dosyalar|*.*",
-            CheckFileExists = true,
+            Title = "Yumi tarayıcı yazılımının kimlikleri kaydettiği klasörü seçin",
             Multiselect = false,
         };
 
-        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FileName))
+        if (dialog.ShowDialog(this) != true || string.IsNullOrWhiteSpace(dialog.FolderName))
         {
             return;
         }
 
-        var folder = Path.GetDirectoryName(dialog.FileName);
-        if (string.IsNullOrWhiteSpace(folder))
-        {
-            return;
-        }
-
-        StartWatchFolder(folder, persist: true);
+        StartWatchFolder(dialog.FolderName, persist: true);
     }
 
     private void TryResumeWatchFolder()

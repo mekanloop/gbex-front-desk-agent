@@ -18,7 +18,7 @@ Windows front desk application for GBEX counter sales.
 
 ## First production target
 
-- URL: `https://app.gbex.com.tr/admin/front-desk`
+- URL: `https://panel.gbex.com.tr/admin/front-desk`
 - Scanner: Yumi YC-3040 DN. Direct scan works if installed as a Windows WIA scanner; otherwise configure the scanner software to save files to a folder and use `Tarama Klasörü İzle`.
 - Signature pad: Wacom STU-430. Device detection is native. True STU screen pen capture uses Wacom STU-SigCaptX/SDK on the PC; the app also has a built-in signature capture fallback for immediate operation.
 

@@ -10,6 +10,35 @@ public sealed class WiaScannerService
         return Type.GetTypeFromProgID("WIA.DeviceManager") is not null;
     }
 
+    public bool HasWiaScanner()
+    {
+        try
+        {
+            var managerType = Type.GetTypeFromProgID("WIA.DeviceManager");
+            if (managerType is null)
+            {
+                return false;
+            }
+
+            dynamic manager = Activator.CreateInstance(managerType)
+                ?? throw new InvalidOperationException("WIA DeviceManager başlatılamadı.");
+
+            foreach (dynamic info in manager.DeviceInfos)
+            {
+                if ((int)info.Type == 1)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async Task<string> ScanIdentityDocumentAsync(CancellationToken cancellationToken)
     {
         return await Task.Run(() =>
