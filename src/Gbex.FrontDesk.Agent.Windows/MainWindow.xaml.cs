@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     private readonly WiaScannerService _scanner = new();
     private readonly WacomSignatureService _wacom = new();
     private readonly HashSet<string> _processedWatchFiles = new(StringComparer.OrdinalIgnoreCase);
-    private FileSystemWatcher? _identityWatcher;
+    private readonly List<FileSystemWatcher> _identityWatchers = [];
 
     public MainWindow()
     {
@@ -41,6 +41,7 @@ public partial class MainWindow : Window
         await InitializeWebViewAsync();
         RefreshDeviceStatus();
         TryResumeWatchFolder();
+        StartDefaultIdentityWatchFolders();
     }
 
     private async Task InitializeWebViewAsync()
@@ -208,9 +209,9 @@ public partial class MainWindow : Window
 
     private void WatchFolderButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_identityWatcher is not null)
+        if (_identityWatchers.Count > 0)
         {
-            StopWatchFolder("Otomatik kimlik klasörü izleme kapatıldı.");
+            StopWatchFolders("Otomatik kimlik klasörü izleme kapatıldı.");
             TryDeleteWatchFolderConfig();
             return;
         }
@@ -231,7 +232,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        StartWatchFolder(dialog.FolderName, persist: true);
+        StartWatchFolders([dialog.FolderName], persist: true, replaceExisting: false);
     }
 
     private void TryResumeWatchFolder()
@@ -246,7 +247,7 @@ public partial class MainWindow : Window
             var folder = File.ReadAllText(WatchFolderConfigPath).Trim();
             if (Directory.Exists(folder))
             {
-                StartWatchFolder(folder, persist: false);
+                StartWatchFolders([folder], persist: false, replaceExisting: false);
             }
         }
         catch (Exception ex)
@@ -255,42 +256,87 @@ public partial class MainWindow : Window
         }
     }
 
-    private void StartWatchFolder(string folder, bool persist)
+    private void StartDefaultIdentityWatchFolders()
     {
-        StopWatchFolder(null);
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+        var downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
 
-        _identityWatcher = new FileSystemWatcher(folder)
+        var gbexScanFolder = Path.Combine(documents, "GBEX Kimlik Taramalari");
+        Directory.CreateDirectory(gbexScanFolder);
+
+        var candidates = new[]
         {
-            IncludeSubdirectories = false,
-            EnableRaisingEvents = true,
-            Filter = "*.*",
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.Size,
+            gbexScanFolder,
+            Path.Combine(documents, "GBEX Kimlik Taramaları"),
+            Path.Combine(documents, "Scanned Documents"),
+            Path.Combine(documents, "Scans"),
+            Path.Combine(documents, "Taramalar"),
+            Path.Combine(pictures, "Scans"),
+            Path.Combine(pictures, "Taramalar"),
+            downloads,
+            desktop,
         };
 
-        _identityWatcher.Created += IdentityWatcher_FileDetected;
-        _identityWatcher.Renamed += IdentityWatcher_FileDetected;
+        StartWatchFolders(candidates.Where(Directory.Exists), persist: false, replaceExisting: false);
+    }
+
+    private void StartWatchFolders(IEnumerable<string> folders, bool persist, bool replaceExisting)
+    {
+        if (replaceExisting)
+        {
+            StopWatchFolders(null);
+        }
+
+        var selectedFolders = folders
+            .Where(Directory.Exists)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(folder => _identityWatchers.All(watcher => !string.Equals(watcher.Path, folder, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        foreach (var folder in selectedFolders)
+        {
+            var watcher = new FileSystemWatcher(folder)
+            {
+                IncludeSubdirectories = false,
+                EnableRaisingEvents = true,
+                Filter = "*.*",
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.CreationTime | NotifyFilters.LastWrite | NotifyFilters.Size,
+            };
+
+            watcher.Created += IdentityWatcher_FileDetected;
+            watcher.Renamed += IdentityWatcher_FileDetected;
+            watcher.Changed += IdentityWatcher_FileDetected;
+            _identityWatchers.Add(watcher);
+        }
+
 
         if (persist)
         {
             Directory.CreateDirectory(AppDataFolder);
-            File.WriteAllText(WatchFolderConfigPath, folder);
+            File.WriteAllText(WatchFolderConfigPath, selectedFolders.FirstOrDefault() ?? "");
         }
 
-        WatchFolderButton.Content = "Klasör İzlemeyi Durdur";
-        WatchFolderStatusText.Text = $"Açık: {folder}";
-        LastActionText.Text = "Tarama klasörü izleniyor. Bu klasöre düşen yeni kimlik dosyaları otomatik yüklenecek.";
+        if (_identityWatchers.Count > 0)
+        {
+            WatchFolderButton.Content = "Klasör İzlemeyi Durdur";
+            WatchFolderStatusText.Text = $"Açık: {_identityWatchers.Count} klasör izleniyor. Önerilen klasör: {Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GBEX Kimlik Taramalari")}";
+            LastActionText.Text = "Otomatik kimlik izleme açık. Yeni taranan kimlik dosyaları dosya seçmeden sisteme yüklenecek.";
+        }
     }
 
-    private void StopWatchFolder(string? status)
+    private void StopWatchFolders(string? status)
     {
-        if (_identityWatcher is not null)
+        foreach (var watcher in _identityWatchers)
         {
-            _identityWatcher.EnableRaisingEvents = false;
-            _identityWatcher.Created -= IdentityWatcher_FileDetected;
-            _identityWatcher.Renamed -= IdentityWatcher_FileDetected;
-            _identityWatcher.Dispose();
-            _identityWatcher = null;
+            watcher.EnableRaisingEvents = false;
+            watcher.Created -= IdentityWatcher_FileDetected;
+            watcher.Renamed -= IdentityWatcher_FileDetected;
+            watcher.Changed -= IdentityWatcher_FileDetected;
+            watcher.Dispose();
         }
+        _identityWatchers.Clear();
 
         WatchFolderButton.Content = "Tarama Klasörü İzle";
         if (!string.IsNullOrWhiteSpace(status))

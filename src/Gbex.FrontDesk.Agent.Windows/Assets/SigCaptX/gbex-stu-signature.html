@@ -15,6 +15,7 @@
       <p>STU-430 bağlı ve Wacom SigCaptX servisi kuruluysa imza cihaz ekranından alınır. Müşteri cihaz üzerinde OK seçince imza otomatik GBEX uygulamasına gönderilir.</p>
       <div class="actions">
         <button class="primary" onclick="startSignature()">STU Cihazından İmza Al</button>
+        <button class="primary" onclick="submitSignatureNow()">İmzayı Sisteme Aktar</button>
         <button class="secondary" onclick="checkSigCaptX()">Servisi Kontrol Et</button>
         <button class="danger" onclick="cancelSignature()">Vazgeç</button>
       </div>
@@ -48,6 +49,8 @@
     var m_inkThreshold;
     var m_penData = [];
     var m_usbDevices;
+    var autoSubmitTimer = null;
+    var signatureSent = false;
     var tablet = null;
 
     function setStatus(text) {
@@ -285,6 +288,7 @@
             processButtons(report, canvas);
             processPoint(report, canvas, ctx);
             m_penData.push(report);
+            scheduleAutoSubmit();
           };
 
           var penDataEncryptedOption = function (report) {
@@ -293,16 +297,18 @@
             processButtons(report.penData[1], canvas);
             processPoint(report.penData[1], canvas, ctx);
             m_penData.push(report.penData[0], report.penData[1]);
+            scheduleAutoSubmit();
           };
 
           m_penData = [];
+          signatureSent = false;
           reportHandler.onReportPenData = penData;
           reportHandler.onReportPenDataOption = penData;
           reportHandler.onReportPenDataTimeCountSequence = penData;
           reportHandler.onReportPenDataEncrypted = penDataEncryptedOption;
           reportHandler.onReportPenDataEncryptedOption = penDataEncryptedOption;
           reportHandler.onReportPenDataTimeCountSequenceEncrypted = penData;
-          setStatus("İmza cihazı hazır. Müşteri STU ekranına imza atsın ve OK seçsin.");
+          setStatus("İmza cihazı hazır. Müşteri STU ekranına imza atsın; imza birkaç saniye içinde otomatik sisteme aktarılır. İsterse cihazdaki OK veya ekrandaki 'İmzayı Sisteme Aktar' da kullanılabilir.");
           return reportHandler.startReporting(tablet, true);
         })
         .fail(function (error) {
@@ -363,11 +369,13 @@
       clearCanvas(canvas, ctx);
       drawButtons();
       m_penData = [];
+      signatureSent = false;
+      if (autoSubmitTimer) window.clearTimeout(autoSubmitTimer);
       tablet.writeImage(m_encodingMode, m_imgData);
     }
 
     function btnOk_Click() {
-      generateImage();
+      submitSignatureNow();
       closeModal();
     }
 
@@ -378,6 +386,20 @@
 
     function btnClear_Click() {
       clearScreen();
+    }
+
+    function scheduleAutoSubmit() {
+      if (signatureSent || !m_penData || m_penData.length < 3) return;
+      if (autoSubmitTimer) window.clearTimeout(autoSubmitTimer);
+      autoSubmitTimer = window.setTimeout(function () {
+        submitSignatureNow();
+        closeModal();
+      }, 2200);
+    }
+
+    function submitSignatureNow() {
+      if (signatureSent) return;
+      generateImage();
     }
 
     function distance(a, b) {
@@ -440,10 +462,13 @@
     }
 
     function generateImage() {
+      if (signatureSent) return;
       if (!m_penData || m_penData.length === 0) {
         setStatus("İmza boş. Lütfen tekrar deneyin.");
         return;
       }
+      signatureSent = true;
+      if (autoSubmitTimer) window.clearTimeout(autoSubmitTimer);
 
       var signatureImage = document.getElementById("signatureImage");
       var signatureCanvas = document.createElement("canvas");

@@ -73,12 +73,12 @@
                         <Border Background="#F8FAFC" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="12" Padding="12" Margin="0,0,0,12">
                             <StackPanel>
                                 <TextBlock Text="Otomatik Kimlik Klasörü" FontWeight="Bold" Foreground="#190A3C" />
-                                <TextBlock x:Name="WatchFolderStatusText" Text="Kapalı. Yumi yazılımı taranan dosyayı klasöre kaydediyorsa bu klasör izlenebilir." TextWrapping="Wrap" Margin="0,6,0,0" />
+                                <TextBlock x:Name="WatchFolderStatusText" Text="Otomatik başlatılıyor. Yumi yazılımı yeni kimlik dosyasını masaüstü, indirilenler veya GBEX tarama klasörüne kaydedince sistem yakalar." TextWrapping="Wrap" Margin="0,6,0,0" />
                             </StackPanel>
                         </Border>
 
                         <TextBlock Text="Not" FontWeight="Bold" Foreground="#190A3C" Margin="0,8,0,4" />
-                        <TextBlock Text="Kimlik için WIA varsa doğrudan tarama yapılır; WIA görünmüyorsa Yumi'nin tarama klasörü izlenerek yeni dosya otomatik yüklenir. Wacom STU için cihaz USB'de görünür ama gerçek STU ekranından imza yakalama Wacom STU SDK ister; SDK yoksa uygulama içi imza ekranı ile işlem bloklanmaz." TextWrapping="Wrap" Foreground="#64748B" FontSize="12" />
+                        <TextBlock Text="Kimlik için WIA varsa doğrudan tarama yapılır; WIA görünmüyorsa app masaüstü/indirilenler/GBEX tarama klasörlerini otomatik izler. Wacom STU imzası cihazdan alınır; imza sonrası otomatik sisteme aktarılır. SigCaptX yoksa uygulama içi imza ekranı yedek olarak açılır." TextWrapping="Wrap" Foreground="#64748B" FontSize="12" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>
