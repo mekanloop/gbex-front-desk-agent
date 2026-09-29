@@ -32,7 +32,10 @@ dotnet build Gbex.FrontDesk.Agent.Windows.sln -c Release
 dotnet publish src/Gbex.FrontDesk.Agent.Windows/Gbex.FrontDesk.Agent.Windows.csproj -c Release -r win-x64 --self-contained true -o publish/GbexFrontDeskAgent
 ```
 
-GitHub Actions builds the installer and publishes `GbexFrontDeskAgentSetup.exe` on every push to `main`.
+GitHub Actions builds both:
+
+- `GbexFrontDeskAgentSetup.exe` — recommended for customer PCs.
+- `GbexFrontDeskAgent-win-x64.zip` — portable fallback package.
 
 ## Operator notes
 
@@ -41,6 +44,14 @@ GitHub Actions builds the installer and publishes `GbexFrontDeskAgentSetup.exe` 
 3. Start GBEX Front Desk Agent.
 4. Log in with the front desk staff account.
 5. Use the native toolbar to scan identity documents, watch the scanner output folder, capture/upload signatures, and check USB device status.
+
+## Troubleshooting
+
+- Prefer the setup installer. Do not run the app directly from inside the ZIP archive.
+- If Windows blocks the downloaded file, open file properties and unblock it.
+- If the app fails to start, inspect:
+  `%LOCALAPPDATA%\GBEX\FrontDeskAgent\front-desk-agent.log`
+- For true Wacom STU screen capture, install Wacom STU-SigCaptX on the customer Windows PC and confirm the local SigCaptX service is running.
 
 ## Device integration notes
 
