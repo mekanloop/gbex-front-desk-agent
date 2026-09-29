@@ -1,0 +1,497 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>GBEX Wacom STU İmza</title>
+  <link rel="stylesheet" href="gbex-stu-signature.css">
+  <script src="q.js" charset="UTF-8"></script>
+  <script src="wgssStuSdk.js" charset="UTF-8"></script>
+</head>
+<body>
+  <div class="shell">
+    <div class="card">
+      <h1>GBEX Wacom STU İmza</h1>
+      <p>STU-430 bağlı ve Wacom SigCaptX servisi kuruluysa imza cihaz ekranından alınır. Müşteri cihaz üzerinde OK seçince imza otomatik GBEX uygulamasına gönderilir.</p>
+      <div class="actions">
+        <button class="primary" onclick="startSignature()">STU Cihazından İmza Al</button>
+        <button class="secondary" onclick="checkSigCaptX()">Servisi Kontrol Et</button>
+        <button class="danger" onclick="cancelSignature()">Vazgeç</button>
+      </div>
+      <div id="status">Hazırlanıyor...</div>
+      <div id="preview">
+        <p>İmza alındı. Uygulamaya aktarılıyor...</p>
+        <img id="signatureImage" alt="Müşteri imzası">
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var BTN_TEXT_OK = "OK";
+    var BTN_TEXT_CLEAR = "TEMİZLE";
+    var BTN_TEXT_CANCEL = "İPTAL";
+    var MAX_RETRIES = 20;
+    var TIMEOUT_LONG = 1000;
+    var TIMEOUT_SHORT = 500;
+
+    var canvas;
+    var ctx;
+    var formDiv;
+    var isDown;
+    var lastPoint;
+    var modalBackground;
+    var m_btns;
+    var m_capability;
+    var m_clickBtn = -1;
+    var m_encodingMode;
+    var m_imgData = null;
+    var m_inkThreshold;
+    var m_penData = [];
+    var m_usbDevices;
+    var tablet = null;
+
+    function setStatus(text) {
+      document.getElementById("status").textContent = text;
+      postToApp({ type: "status", message: text });
+    }
+
+    function postToApp(payload) {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(payload);
+      }
+    }
+
+    function Rectangle(x, y, width, height) {
+      this.x = x;
+      this.y = y;
+      this.width = width;
+      this.height = height;
+      this.Contains = function (pt) {
+        return pt.x >= this.x && pt.x <= this.x + this.width && pt.y >= this.y && pt.y <= this.y + this.height;
+      };
+    }
+
+    function Button() {
+      this.Bounds = null;
+      this.Text = "";
+      this.Click = null;
+    }
+
+    function Point(x, y) {
+      this.x = x;
+      this.y = y;
+    }
+
+    function checkSigCaptX() {
+      setStatus("Wacom SigCaptX servisi kontrol ediliyor...");
+      if (!WacomGSS.STU.isServiceReady()) {
+        setStatus("SigCaptX Web Service bağlı değil. PC'ye Wacom STU-SigCaptX kurulmalı ve servis çalışmalı. Varsayılan port: 9000.");
+        return;
+      }
+
+      WacomGSS.STU.isDCAReady()
+        .then(function (ready) {
+          if (ready) {
+            setStatus("SigCaptX hazır. STU cihazından imza alınabilir.");
+          } else {
+            setStatus("SigCaptX web servisi hazır ama DCA hazır değil. Windows oturumunda Wacom Device Control Application başlatılmalı.");
+          }
+        })
+        .fail(function (error) {
+          setStatus("SigCaptX kontrol hatası: " + error);
+        });
+    }
+
+    function startSignature() {
+      setStatus("STU imza oturumu başlatılıyor...");
+      tabletDemo();
+    }
+
+    function cancelSignature() {
+      disconnect().then(function () {
+        postToApp({ type: "cancel" });
+      });
+    }
+
+    function createModalWindow(width, height) {
+      modalBackground = document.createElement("div");
+      modalBackground.id = "modal-background";
+      modalBackground.className = "active";
+      document.body.appendChild(modalBackground);
+
+      formDiv = document.createElement("div");
+      formDiv.id = "signatureWindow";
+      formDiv.className = "active";
+      formDiv.style.top = Math.max(20, (window.innerHeight / 2) - (height / 2)) + "px";
+      formDiv.style.left = Math.max(20, (window.innerWidth / 2) - (width / 2)) + "px";
+      formDiv.style.width = width + "px";
+      formDiv.style.height = height + "px";
+      document.body.appendChild(formDiv);
+
+      canvas = document.createElement("canvas");
+      canvas.id = "signatureCanvas";
+      canvas.height = formDiv.offsetHeight;
+      canvas.width = formDiv.offsetWidth;
+      formDiv.appendChild(canvas);
+      ctx = canvas.getContext("2d");
+      canvas.addEventListener("click", onCanvasClick, false);
+    }
+
+    function disconnect() {
+      var deferred = Q.defer();
+      if (tablet) {
+        var p = new WacomGSS.STU.Protocol();
+        tablet.setInkingMode(p.InkingMode.InkingMode_Off)
+          .then(function () { return tablet.endCapture(); })
+          .then(function (message) {
+            if (m_imgData !== null) {
+              return m_imgData.remove();
+            }
+            return message;
+          })
+          .then(function () { m_imgData = null; return tablet.setClearScreen(); })
+          .then(function () { return tablet.disconnect(); })
+          .then(function () {
+            tablet = null;
+            deferred.resolve();
+          })
+          .fail(function () {
+            tablet = null;
+            deferred.resolve();
+          });
+      } else {
+        deferred.resolve();
+      }
+      return deferred.promise;
+    }
+
+    window.addEventListener("beforeunload", function () {
+      try {
+        WacomGSS.STU.close();
+      } catch (_) {}
+    });
+
+    function DCANotReady() {}
+    DCANotReady.prototype = new Error();
+
+    function tabletDemo() {
+      var p = new WacomGSS.STU.Protocol();
+      var intf;
+
+      WacomGSS.STU.isDCAReady()
+        .then(function (ready) {
+          if (!ready) throw new DCANotReady();
+          WacomGSS.STU.onDCAtimeout = function () {
+            setStatus("Wacom DCA zaman aşımına uğradı.");
+            closeModal();
+          };
+          return WacomGSS.STU.getUsbDevices();
+        })
+        .then(function (devices) {
+          if (devices == null || devices.length === 0) throw new Error("STU cihazı bulunamadı.");
+          m_usbDevices = devices;
+          setStatus("STU cihazı bulundu. Bağlanıyor...");
+          return WacomGSS.STU.isSupportedUsbDevice(m_usbDevices[0].idVendor, m_usbDevices[0].idProduct);
+        })
+        .then(function () {
+          intf = new WacomGSS.STU.UsbInterface();
+          return intf.Constructor();
+        })
+        .then(function () { return intf.connect(m_usbDevices[0], true); })
+        .then(function () {
+          tablet = new WacomGSS.STU.Tablet();
+          return tablet.Constructor(intf);
+        })
+        .then(function () {
+          intf = null;
+          return tablet.getInkThreshold();
+        })
+        .then(function (threshold) {
+          m_inkThreshold = threshold;
+          return tablet.getCapability();
+        })
+        .then(function (capability) {
+          m_capability = capability;
+          createModalWindow(m_capability.screenWidth, m_capability.screenHeight);
+          return tablet.getProductId();
+        })
+        .then(function (productId) {
+          return WacomGSS.STU.ProtocolHelper.simulateEncodingFlag(productId, m_capability.encodingFlag);
+        })
+        .then(function (encodingFlag) {
+          if ((encodingFlag & p.EncodingFlag.EncodingFlag_24bit) !== 0) {
+            return tablet.supportsWrite().then(function (supportsWrite) {
+              m_encodingMode = supportsWrite ? p.EncodingMode.EncodingMode_24bit_Bulk : p.EncodingMode.EncodingMode_24bit;
+            });
+          }
+          if ((encodingFlag & p.EncodingFlag.EncodingFlag_16bit) !== 0) {
+            return tablet.supportsWrite().then(function (supportsWrite) {
+              m_encodingMode = supportsWrite ? p.EncodingMode.EncodingMode_16bit_Bulk : p.EncodingMode.EncodingMode_16bit;
+            });
+          }
+          m_encodingMode = p.EncodingMode.EncodingMode_1bit;
+          return m_encodingMode;
+        })
+        .then(function () { return tablet.setClearScreen(); })
+        .then(function () { return tablet.isSupported(p.ReportId.ReportId_PenDataOptionMode); })
+        .then(function (supported) {
+          if (!supported) return m_encodingMode;
+          return tablet.getProductId().then(function (productId) {
+            var mode = p.PenDataOptionMode.PenDataOptionMode_None;
+            switch (productId) {
+              case WacomGSS.STU.ProductId.ProductId_520A:
+                mode = p.PenDataOptionMode.PenDataOptionMode_TimeCount;
+                break;
+              case WacomGSS.STU.ProductId.ProductId_430:
+              case WacomGSS.STU.ProductId.ProductId_530:
+              case WacomGSS.STU.ProductId.ProductId_540:
+                mode = p.PenDataOptionMode.PenDataOptionMode_TimeCountSequence;
+                break;
+            }
+            return tablet.setPenDataOptionMode(mode);
+          });
+        })
+        .then(function () {
+          addButtons();
+          var canvasImage = canvas.toDataURL("image/jpeg");
+          return WacomGSS.STU.ProtocolHelper.resizeAndFlatten(
+            canvasImage,
+            0,
+            0,
+            0,
+            0,
+            m_capability.screenWidth,
+            m_capability.screenHeight,
+            m_encodingMode,
+            1,
+            false,
+            0,
+            true
+          );
+        })
+        .then(function (imgData) {
+          m_imgData = imgData;
+          return tablet.writeImage(m_encodingMode, imgData);
+        })
+        .then(function () { return tablet.setInkingMode(p.InkingMode.InkingMode_On); })
+        .then(function () {
+          var reportHandler = new WacomGSS.STU.ProtocolHelper.ReportHandler();
+          lastPoint = { x: 0, y: 0 };
+          isDown = false;
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = "black";
+
+          var penData = function (report) {
+            processButtons(report, canvas);
+            processPoint(report, canvas, ctx);
+            m_penData.push(report);
+          };
+
+          var penDataEncryptedOption = function (report) {
+            processButtons(report.penData[0], canvas);
+            processPoint(report.penData[0], canvas, ctx);
+            processButtons(report.penData[1], canvas);
+            processPoint(report.penData[1], canvas, ctx);
+            m_penData.push(report.penData[0], report.penData[1]);
+          };
+
+          m_penData = [];
+          reportHandler.onReportPenData = penData;
+          reportHandler.onReportPenDataOption = penData;
+          reportHandler.onReportPenDataTimeCountSequence = penData;
+          reportHandler.onReportPenDataEncrypted = penDataEncryptedOption;
+          reportHandler.onReportPenDataEncryptedOption = penDataEncryptedOption;
+          reportHandler.onReportPenDataTimeCountSequenceEncrypted = penData;
+          setStatus("İmza cihazı hazır. Müşteri STU ekranına imza atsın ve OK seçsin.");
+          return reportHandler.startReporting(tablet, true);
+        })
+        .fail(function (error) {
+          if (error instanceof DCANotReady) {
+            WacomGSS.STU.Reinitialize();
+            setTimeout(tabletDemo, TIMEOUT_LONG);
+            return;
+          }
+          setStatus("STU imza hatası: " + error);
+          postToApp({ type: "error", message: "STU imza hatası: " + error });
+          closeModal();
+        });
+    }
+
+    function addButtons() {
+      m_btns = [new Button(), new Button(), new Button()];
+      var w2 = m_capability.screenWidth / 3;
+      var w3 = m_capability.screenWidth / 3;
+      var w1 = m_capability.screenWidth - w2 - w3;
+      var y = m_capability.screenHeight * 6 / 7;
+      var h = m_capability.screenHeight - y;
+
+      m_btns[0].Bounds = new Rectangle(0, y, w1, h);
+      m_btns[1].Bounds = new Rectangle(w1, y, w2, h);
+      m_btns[2].Bounds = new Rectangle(w1 + w2, y, w3, h);
+      m_btns[0].Text = BTN_TEXT_OK;
+      m_btns[1].Text = BTN_TEXT_CLEAR;
+      m_btns[2].Text = BTN_TEXT_CANCEL;
+      m_btns[0].Click = btnOk_Click;
+      m_btns[1].Click = btnClear_Click;
+      m_btns[2].Click = btnCancel_Click;
+
+      clearCanvas(canvas, ctx);
+      drawButtons();
+    }
+
+    function drawButtons() {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.beginPath();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "black";
+      ctx.font = "22px Arial";
+      for (var i = 0; i < m_btns.length; i++) {
+        ctx.fillStyle = "lightgrey";
+        ctx.fillRect(m_btns[i].Bounds.x, m_btns[i].Bounds.y, m_btns[i].Bounds.width, m_btns[i].Bounds.height);
+        ctx.fillStyle = "black";
+        ctx.rect(m_btns[i].Bounds.x, m_btns[i].Bounds.y, m_btns[i].Bounds.width, m_btns[i].Bounds.height);
+        var xPos = m_btns[i].Bounds.x + ((m_btns[i].Bounds.width / 2) - (ctx.measureText(m_btns[i].Text).width / 2));
+        ctx.fillText(m_btns[i].Text, xPos, m_btns[i].Bounds.y + 26);
+      }
+      ctx.stroke();
+      ctx.closePath();
+      ctx.restore();
+    }
+
+    function clearScreen() {
+      clearCanvas(canvas, ctx);
+      drawButtons();
+      m_penData = [];
+      tablet.writeImage(m_encodingMode, m_imgData);
+    }
+
+    function btnOk_Click() {
+      generateImage();
+      closeModal();
+    }
+
+    function btnCancel_Click() {
+      closeModal();
+      postToApp({ type: "cancel" });
+    }
+
+    function btnClear_Click() {
+      clearScreen();
+    }
+
+    function distance(a, b) {
+      return Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2);
+    }
+
+    function clearCanvas(in_canvas, in_ctx) {
+      in_ctx.save();
+      in_ctx.setTransform(1, 0, 0, 1, 0, 0);
+      in_ctx.fillStyle = "white";
+      in_ctx.fillRect(0, 0, in_canvas.width, in_canvas.height);
+      in_ctx.restore();
+    }
+
+    function processButtons(point, in_canvas) {
+      var nextPoint = {};
+      nextPoint.x = Math.round(in_canvas.width * point.x / m_capability.tabletMaxX);
+      nextPoint.y = Math.round(in_canvas.height * point.y / m_capability.tabletMaxY);
+      var isDown2 = isDown ? !(point.pressure <= m_inkThreshold.offPressureMark) : point.pressure > m_inkThreshold.onPressureMark;
+
+      var btn = -1;
+      for (var i = 0; i < m_btns.length; i++) {
+        if (m_btns[i].Bounds.Contains(nextPoint)) {
+          btn = i;
+          break;
+        }
+      }
+
+      if (isDown && !isDown2) {
+        if (btn !== -1 && m_clickBtn === btn) {
+          m_btns[btn].Click();
+        }
+        m_clickBtn = -1;
+      } else if (btn !== -1 && !isDown && isDown2) {
+        m_clickBtn = btn;
+      }
+      return btn === -1;
+    }
+
+    function processPoint(point, in_canvas, in_ctx) {
+      var nextPoint = {};
+      nextPoint.x = Math.round(in_canvas.width * point.x / m_capability.tabletMaxX);
+      nextPoint.y = Math.round(in_canvas.height * point.y / m_capability.tabletMaxY);
+      var isDown2 = isDown ? !(point.pressure <= m_inkThreshold.offPressureMark) : point.pressure > m_inkThreshold.onPressureMark;
+
+      if (!isDown && isDown2) {
+        lastPoint = nextPoint;
+      }
+
+      if ((isDown2 && 10 < distance(lastPoint, nextPoint)) || (isDown && !isDown2)) {
+        in_ctx.beginPath();
+        in_ctx.moveTo(lastPoint.x, lastPoint.y);
+        in_ctx.lineTo(nextPoint.x, nextPoint.y);
+        in_ctx.stroke();
+        in_ctx.closePath();
+        lastPoint = nextPoint;
+      }
+
+      isDown = isDown2;
+    }
+
+    function generateImage() {
+      if (!m_penData || m_penData.length === 0) {
+        setStatus("İmza boş. Lütfen tekrar deneyin.");
+        return;
+      }
+
+      var signatureImage = document.getElementById("signatureImage");
+      var signatureCanvas = document.createElement("canvas");
+      signatureCanvas.height = 260;
+      signatureCanvas.width = 620;
+      var signatureCtx = signatureCanvas.getContext("2d");
+
+      clearCanvas(signatureCanvas, signatureCtx);
+      signatureCtx.lineWidth = 2;
+      signatureCtx.strokeStyle = "black";
+      lastPoint = { x: 0, y: 0 };
+      isDown = false;
+
+      for (var i = 0; i < m_penData.length; i++) {
+        processPoint(m_penData[i], signatureCanvas, signatureCtx);
+      }
+
+      var dataUrl = signatureCanvas.toDataURL("image/png");
+      signatureImage.src = dataUrl;
+      document.getElementById("preview").style.display = "block";
+      setStatus("İmza alındı. GBEX uygulamasına gönderiliyor...");
+      postToApp({ type: "signature", dataUrl: dataUrl });
+    }
+
+    function closeModal() {
+      WacomGSS.STU.onDCAtimeout = null;
+      disconnect().then(function () {
+        if (modalBackground && modalBackground.parentNode) modalBackground.parentNode.removeChild(modalBackground);
+        if (formDiv && formDiv.parentNode) formDiv.parentNode.removeChild(formDiv);
+        modalBackground = null;
+        formDiv = null;
+      });
+    }
+
+    function onCanvasClick(event) {
+      var posX = event.pageX - formDiv.offsetLeft;
+      var posY = event.pageY - formDiv.offsetTop;
+      for (var i = 0; i < m_btns.length; i++) {
+        if (m_btns[i].Bounds.Contains(new Point(posX, posY))) {
+          m_btns[i].Click();
+          break;
+        }
+      }
+    }
+
+    setTimeout(function () {
+      checkSigCaptX();
+    }, TIMEOUT_SHORT);
+  </script>
+</body>
+</html>

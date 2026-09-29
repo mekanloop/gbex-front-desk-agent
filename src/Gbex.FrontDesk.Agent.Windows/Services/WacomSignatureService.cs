@@ -18,8 +18,8 @@ public sealed class WacomSignatureService
         }
 
         return IsSdkAvailable()
-            ? "Wacom STU cihazı algılandı; Wacom SDK mevcut."
-            : "Wacom STU cihazı algılandı; imza yakalama için Wacom STU SDK/driver kurulumu gerekiyor.";
+            ? "Wacom STU cihazı algılandı; klasik Wacom STU SDK mevcut. İmza alma önce SigCaptX/STU penceresini dener."
+            : "Wacom STU cihazı algılandı. Gerçek cihaz ekranından imza için Wacom STU-SigCaptX/SDK kurulumu gerekir; yoksa uygulama içi imza ekranı kullanılır.";
     }
 
     public Task<string> CaptureSignatureAsync(CancellationToken cancellationToken)

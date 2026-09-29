@@ -10,6 +10,7 @@ Windows front desk application for GBEX counter sales.
 - Uploads scanned ID files to the logged-in GBEX front desk session.
 - Watches the scanner output folder and auto-uploads new ID files when the scanner is not exposed as WIA.
 - Detects Wacom STU signature pads and exposes status in the app.
+- Captures Wacom STU signatures through Wacom STU-SigCaptX when it is installed on the Windows PC.
 - Uploads signature images to the logged-in GBEX front desk session.
 - Opens an in-app signature capture screen when Wacom STU SDK is not installed, so the sales workflow is not blocked.
 - Keeps Wacom integration inside the same native app; no separate GBEX bridge/service is required.
@@ -19,7 +20,7 @@ Windows front desk application for GBEX counter sales.
 
 - URL: `https://app.gbex.com.tr/admin/front-desk`
 - Scanner: Yumi YC-3040 DN. Direct scan works if installed as a Windows WIA scanner; otherwise configure the scanner software to save files to a folder and use `Tarama Klasörü İzle`.
-- Signature pad: Wacom STU-430. Device detection is native. True STU screen pen capture requires Wacom drivers/SDK; the app also has a built-in signature capture fallback for immediate operation.
+- Signature pad: Wacom STU-430. Device detection is native. True STU screen pen capture uses Wacom STU-SigCaptX/SDK on the PC; the app also has a built-in signature capture fallback for immediate operation.
 
 ## Build
 
@@ -44,4 +45,4 @@ GitHub Actions builds the installer and publishes `GbexFrontDeskAgentSetup.exe` 
 ## Device integration notes
 
 - Yumi YC-3040 DN: direct capture uses Windows WIA. If the device is TWAIN/vendor-software only, use the watched-folder mode and set the scanner software output folder to the same folder.
-- Wacom STU-430: device detection is native. Real-time pen capture from the STU screen requires Wacom's STU SDK/driver on the target Windows PC. Until that SDK is installed, `İmza Al` opens the in-app signature capture screen and uploads the saved signature through the same GBEX API.
+- Wacom STU-430: device detection is native. `İmza Al` first opens the bundled SigCaptX capture page and talks to the local Wacom SigCaptX service. The target Windows PC must have Wacom STU-SigCaptX installed and running for true device-screen capture. If SigCaptX is not available, the app falls back to the in-app signature capture screen and uploads the saved signature through the same GBEX API.

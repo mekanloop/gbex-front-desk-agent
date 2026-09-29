@@ -111,13 +111,27 @@ public partial class MainWindow : Window
 
     private async void CaptureSignatureButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!_wacom.IsSdkAvailable())
+        LastActionText.Text = "Wacom STU/SigCaptX imza penceresi açılıyor.";
+
+        try
         {
-            LastActionText.Text = "Wacom STU SDK hazır değil; uygulama içi imza ekranı açılıyor.";
+            var sigCaptXWindow = new SigCaptXSignatureWindow
+            {
+                Owner = this,
+            };
+
+            if (sigCaptXWindow.ShowDialog() == true && !string.IsNullOrWhiteSpace(sigCaptXWindow.CapturedFilePath))
+            {
+                await RunBusyAsync("Wacom STU imzası sisteme yükleniyor...", cancellationToken =>
+                    UploadSignatureFileAsync(sigCaptXWindow.CapturedFilePath, cancellationToken));
+                return;
+            }
+
+            LastActionText.Text = $"{sigCaptXWindow.LastStatus} Uygulama içi imza ekranı açılıyor.";
         }
-        else
+        catch (Exception ex)
         {
-            LastActionText.Text = "Wacom STU SDK algılandı; bu sürümde güvenli imza yükleme için uygulama içi imza ekranı açılıyor.";
+            LastActionText.Text = $"Wacom STU/SigCaptX açılamadı: {ex.Message}. Uygulama içi imza ekranı açılıyor.";
         }
 
         await CaptureSignatureWithAppCanvasAsync();
