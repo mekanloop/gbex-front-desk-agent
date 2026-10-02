@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 
 namespace Gbex.FrontDesk.Agent.Windows.Services;
@@ -16,32 +17,46 @@ public sealed class FrontDeskUploader
         _baseUri = baseUri;
     }
 
-    public async Task UploadIdentityDocumentAsync(string filePath, CancellationToken cancellationToken)
+    public async Task<JsonDocument> UploadIdentityDocumentAsync(
+        string filePath,
+        string captureSessionId,
+        string accountId,
+        CancellationToken cancellationToken)
     {
-        await UploadMultipartAsync(
+        return await UploadMultipartAsync(
             "/api/admin/front-desk/identity-scans",
             "identityDocument",
             filePath,
+            captureSessionId,
+            accountId,
             "Kimlik yüklenemedi",
             cancellationToken
         );
     }
 
-    public async Task UploadSignatureImageAsync(string filePath, CancellationToken cancellationToken)
+    public async Task<JsonDocument> UploadSignatureImageAsync(
+        string filePath,
+        string captureSessionId,
+        string accountId,
+        CancellationToken cancellationToken)
     {
-        await UploadMultipartAsync(
+        return await UploadMultipartAsync(
             "/api/admin/front-desk/signatures",
             "signatureImage",
             filePath,
+            captureSessionId,
+            accountId,
             "İmza yüklenemedi",
             cancellationToken
         );
     }
 
-    private async Task UploadMultipartAsync(
+    private async Task<JsonDocument> UploadMultipartAsync(
         string endpoint,
         string fieldName,
         string filePath,
+        string captureSessionId,
+        string accountId,
         string errorPrefix,
         CancellationToken cancellationToken
     )
@@ -67,6 +82,8 @@ public sealed class FrontDeskUploader
         using var fileContent = new StreamContent(stream);
         fileContent.Headers.ContentType = new MediaTypeHeaderValue(ContentTypeFor(filePath));
         content.Add(fileContent, fieldName, Path.GetFileName(filePath));
+        content.Add(new StringContent(captureSessionId), "captureSessionId");
+        content.Add(new StringContent(accountId), "accountId");
 
         using var response = await client.PostAsync(endpoint, content, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -74,6 +91,8 @@ public sealed class FrontDeskUploader
         {
             throw new InvalidOperationException($"{errorPrefix} ({(int)response.StatusCode}): {body}");
         }
+
+        return JsonDocument.Parse(body);
     }
 
     private static string ContentTypeFor(string path)
