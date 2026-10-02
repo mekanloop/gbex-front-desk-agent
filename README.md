@@ -13,7 +13,7 @@ Windows front desk application for GBEX counter sales.
 - Detects Wacom STU signature pads and exposes status in the app.
 - Captures Wacom STU signatures through Wacom STU-SigCaptX when it is installed on the Windows PC.
 - Uploads signature images only to the active GBEX capture session.
-- Opens an in-app signature capture screen when Wacom STU SDK is not installed, so the sales workflow is not blocked.
+- Blocks signature completion when Wacom STU/SigCaptX is not available. The mouse/touch fallback is not accepted as a Wacom device signature.
 - Keeps Wacom integration inside the same native app; no separate GBEX bridge/service is required.
 - Keeps device work native; there is no separate local bridge/service for operators to run.
 
@@ -21,7 +21,7 @@ Windows front desk application for GBEX counter sales.
 
 - URL: `https://panel.gbex.com.tr/admin/front-desk`
 - Scanner: Yumi YC-3040 DN. Direct scan works if installed as a Windows WIA scanner. If the printer scans to SMB, the app prepares and watches the secure GBEX folder: `%ProgramData%\GBEX\FrontDesk\Scans\Incoming`.
-- Signature pad: Wacom STU-430. Device detection is native. True STU screen pen capture uses Wacom STU-SigCaptX/SDK on the PC; the app also has a built-in signature capture fallback for immediate operation.
+- Signature pad: Wacom STU-430. Device detection is native. True STU screen pen capture uses Wacom STU-SigCaptX/SDK on the PC; if it is missing, the app shows a blocking error.
 
 ## Build
 
@@ -59,4 +59,4 @@ GitHub Actions builds both:
 ## Device integration notes
 
 - Yumi YC-3040 DN: direct capture uses Windows WIA. If the device is SMB scan-to-folder only, configure the device destination to the app-created `GBEXSCAN$` share. The app will upload the first new PDF/JPG only after the active web workflow requests an ID scan.
-- Wacom STU-430: device detection is native. The web workflow command opens the bundled SigCaptX capture page and talks to the local Wacom SigCaptX service. The target Windows PC must have Wacom STU-SigCaptX installed and running for true device-screen capture. If SigCaptX is not available, the app falls back to the in-app signature capture screen and uploads the saved signature through the same GBEX API.
+- Wacom STU-430: device detection is native. The web workflow command opens the bundled SigCaptX capture page and talks to the local Wacom SigCaptX service. The target Windows PC must have Wacom STU-SigCaptX installed and running for true device-screen capture. If SigCaptX is not available, the app returns a blocking error and does not open the in-app mouse/touch canvas.

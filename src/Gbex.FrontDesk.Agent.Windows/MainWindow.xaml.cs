@@ -167,31 +167,22 @@ public partial class MainWindow : Window
                 return;
             }
 
-            LastActionText.Text = $"{sigCaptXWindow.LastStatus} Uygulama içi imza ekranı açılıyor.";
+            throw new InvalidOperationException(
+                $"{sigCaptXWindow.LastStatus} Wacom STU-430 cihazından gerçek imza alınamadı. Wacom STU/SigCaptX bileşenini kurup cihazı tekrar deneyin."
+            );
         }
         catch (Exception ex)
         {
-            LastActionText.Text = $"Wacom STU/SigCaptX açılamadı: {ex.Message}. Uygulama içi imza ekranı açılıyor.";
+            LastActionText.Text = $"Wacom STU imza alınamadı: {ex.Message}";
+            NotifyWeb("signature", "error", ex.Message);
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "GBEX Wacom STU",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning
+            );
         }
-
-        await CaptureSignatureWithAppCanvasAsync();
-    }
-
-    private async Task CaptureSignatureWithAppCanvasAsync()
-    {
-        var window = new SignatureCaptureWindow
-        {
-            Owner = this,
-        };
-
-        if (window.ShowDialog() != true || string.IsNullOrWhiteSpace(window.CapturedFilePath))
-        {
-            LastActionText.Text = "İmza alma iptal edildi.";
-            return;
-        }
-
-        await RunBusyAsync("İmza sisteme yükleniyor...", cancellationToken =>
-            UploadSignatureFileAsync(window.CapturedFilePath, _activeCapture, cancellationToken));
     }
 
     private async Task UploadIdentityFileAsync(string filePath, ActiveCapture? capture, CancellationToken cancellationToken)

@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: "1.1.0"
+  APP_VERSION: "1.1.1"
 
 jobs:
   build-test-publish:
@@ -97,7 +97,8 @@ jobs:
           - Removes normal operator file-picking buttons to prevent mixing customer documents.
           - Watches only the secure GBEX scan folder for SMB scan-to-folder devices.
           - Prepares the local GBEX scan folder/share and firewall rules when possible.
-          - Supports Wacom STU signature capture through Wacom SigCaptX when installed, with in-app fallback.
+          - Supports Wacom STU signature capture through Wacom SigCaptX when installed.
+          - Blocks signature completion instead of opening a mouse/touch fallback when Wacom capture fails.
           - Recommended customer install: download GbexFrontDeskAgentSetup.exe and run it.
           - If the app fails on the customer PC, check %LOCALAPPDATA%\GBEX\FrontDeskAgent\front-desk-agent.log.
           "@
