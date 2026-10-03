@@ -64,6 +64,31 @@
       }
     }
 
+    function waitForSigCaptXService(maxAttempts) {
+      var deferred = Q.defer();
+      var attempt = 0;
+
+      function poll() {
+        attempt += 1;
+        if (WacomGSS.STU.isServiceReady()) {
+          deferred.resolve(true);
+          return;
+        }
+        if (attempt >= maxAttempts) {
+          deferred.resolve(false);
+          return;
+        }
+        setTimeout(poll, 500);
+      }
+
+      poll();
+      return deferred.promise;
+    }
+
+    function sigCaptXServiceMessage() {
+      return "SigCaptX Web Service bağlı değil. Wacom STU/SigCaptX kurulu olsa bile Windows hizmeti çalışmıyor olabilir. Wacom SigCaptX/DCA servisini başlatın, cihazı USB'den çıkarıp takın ve GBEX Front Desk Agent'ı yeniden açın. Varsayılan port: 9000.";
+    }
+
     function Rectangle(x, y, width, height) {
       this.x = x;
       this.y = y;
@@ -87,17 +112,19 @@
 
     function checkSigCaptX() {
       setStatus("Wacom SigCaptX servisi kontrol ediliyor...");
-      if (!WacomGSS.STU.isServiceReady()) {
-        setStatus("SigCaptX Web Service bağlı değil. PC'ye Wacom STU-SigCaptX kurulmalı ve servis çalışmalı. Varsayılan port: 9000.");
-        return;
-      }
-
-      WacomGSS.STU.isDCAReady()
+      waitForSigCaptXService(12).then(function (serviceReady) {
+        if (!serviceReady) {
+          setStatus(sigCaptXServiceMessage());
+          return null;
+        }
+        return WacomGSS.STU.isDCAReady();
+      })
         .then(function (ready) {
+          if (ready === null) return;
           if (ready) {
             setStatus("SigCaptX hazır. STU cihazından imza alınabilir.");
           } else {
-            setStatus("SigCaptX web servisi hazır ama DCA hazır değil. Windows oturumunda Wacom Device Control Application başlatılmalı.");
+            setStatus("SigCaptX web servisi hazır ama DCA hazır değil. Windows oturumunda Wacom Device Control Application başlatılmalı veya STU cihazı USB'den çıkarılıp tekrar takılmalı.");
           }
         })
         .fail(function (error) {
@@ -107,7 +134,15 @@
 
     function startSignature() {
       setStatus("STU imza oturumu başlatılıyor...");
-      tabletDemo();
+      waitForSigCaptXService(16).then(function (serviceReady) {
+        if (!serviceReady) {
+          var message = sigCaptXServiceMessage();
+          setStatus(message);
+          postToApp({ type: "error", message: message });
+          return;
+        }
+        tabletDemo();
+      });
     }
 
     function cancelSignature() {

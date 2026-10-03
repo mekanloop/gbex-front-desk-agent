@@ -29,6 +29,8 @@ public partial class SigCaptXSignatureWindow : Window
         {
             await SignatureWebView.EnsureCoreWebView2Async();
             SignatureWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
+            SignatureWebView.CoreWebView2.ServerCertificateErrorDetected += CoreWebView2_ServerCertificateErrorDetected;
+            SignatureWebView.CoreWebView2.ProcessFailed += CoreWebView2_ProcessFailed;
             SignatureWebView.CoreWebView2.WebMessageReceived += CoreWebView2_WebMessageReceived;
 
             if (!File.Exists(SigCaptXHtmlPath))
@@ -44,6 +46,22 @@ public partial class SigCaptXSignatureWindow : Window
             MessageBox.Show(this, ex.Message, "GBEX Wacom STU", MessageBoxButton.OK, MessageBoxImage.Warning);
             DialogResult = false;
         }
+    }
+
+    private void CoreWebView2_ServerCertificateErrorDetected(object? sender, CoreWebView2ServerCertificateErrorDetectedEventArgs e)
+    {
+        if (Uri.TryCreate(e.RequestUri, UriKind.Absolute, out var uri)
+            && string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+            && uri.Port == 9000)
+        {
+            e.Action = CoreWebView2ServerCertificateErrorAction.AlwaysAllow;
+        }
+    }
+
+    private void CoreWebView2_ProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        LastStatus = $"Wacom imza ekranı WebView hatası: {e.ProcessFailedKind}";
+        MessageBox.Show(this, LastStatus, "GBEX Wacom STU", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void CoreWebView2_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)

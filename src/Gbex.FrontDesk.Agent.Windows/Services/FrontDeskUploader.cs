@@ -89,10 +89,41 @@ public sealed class FrontDeskUploader
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException($"{errorPrefix} ({(int)response.StatusCode}): {body}");
+            throw new InvalidOperationException($"{errorPrefix} ({(int)response.StatusCode}): {ExtractErrorMessage(body)}");
         }
 
         return JsonDocument.Parse(body);
+    }
+
+    private static string ExtractErrorMessage(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return "Sunucu boş hata cevabı döndürdü.";
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            if (root.TryGetProperty("error", out var error)
+                && error.ValueKind == JsonValueKind.Object
+                && error.TryGetProperty("message", out var errorMessage)
+                && errorMessage.ValueKind == JsonValueKind.String)
+            {
+                return errorMessage.GetString() ?? body;
+            }
+            if (root.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.String)
+            {
+                return message.GetString() ?? body;
+            }
+        }
+        catch (JsonException)
+        {
+            // Keep the original server response below.
+        }
+
+        return body.Length > 600 ? body[..600] + "..." : body;
     }
 
     private static string ContentTypeFor(string path)

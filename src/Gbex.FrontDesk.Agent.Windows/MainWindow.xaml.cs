@@ -167,9 +167,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            throw new InvalidOperationException(
-                $"{sigCaptXWindow.LastStatus} Wacom STU-430 cihazından gerçek imza alınamadı. Wacom STU/SigCaptX bileşenini kurup cihazı tekrar deneyin."
-            );
+            throw new InvalidOperationException(BuildWacomCaptureError(sigCaptXWindow.LastStatus));
         }
         catch (Exception ex)
         {
@@ -183,6 +181,32 @@ public partial class MainWindow : Window
                 MessageBoxImage.Warning
             );
         }
+    }
+
+    private static string BuildWacomCaptureError(string status)
+    {
+        var message = string.IsNullOrWhiteSpace(status)
+            ? "Wacom STU imza oturumu tamamlanmadı."
+            : status.Trim();
+
+        if (message.Contains("SigCaptX Web Service bağlı değil", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("port: 9000", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{message}\n\nSebep: STU cihazı USB'de görünse bile imza yakalama SigCaptX servisinden yapılır. Servis çalışmıyorsa imza çekilemez.";
+        }
+
+        if (message.Contains("DCA", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{message}\n\nSebep: Wacom Device Control Application hazır değil. STU USB kablosunu çıkarıp tekrar takın, Wacom SigCaptX/DCA hizmetini başlatın ve tekrar deneyin.";
+        }
+
+        if (message.Contains("STU cihazı bulunamadı", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("device", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"{message}\n\nSebep: Wacom STU-430 Windows tarafından imza cihazı olarak yakalanamadı. USB kablosu, farklı USB portu ve başka imza programlarının kapalı olduğu kontrol edilmeli.";
+        }
+
+        return $"{message}\n\nWacom STU-430 cihazından gerçek imza alınamadı. GBEX Agent v1.1.2 veya üstünü kurup cihazı tekrar deneyin.";
     }
 
     private async Task UploadIdentityFileAsync(string filePath, ActiveCapture? capture, CancellationToken cancellationToken)
