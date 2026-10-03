@@ -12,10 +12,8 @@
   <div class="shell">
     <div class="card">
       <h1>GBEX Wacom STU İmza</h1>
-      <p>STU-430 bağlı ve Wacom SigCaptX servisi kuruluysa imza cihaz ekranından alınır. Müşteri cihaz üzerinde OK seçince imza otomatik GBEX uygulamasına gönderilir.</p>
+      <p>İmza müşteri tarafından yalnızca Wacom STU-430 cihazının ekranına atılır. Bu küçük pencere sadece cihaz bağlantısını yönetir.</p>
       <div class="actions">
-        <button class="primary" onclick="startSignature()">STU Cihazından İmza Al</button>
-        <button class="primary" onclick="submitSignatureNow()">İmzayı Sisteme Aktar</button>
         <button class="secondary" onclick="checkSigCaptX()">Servisi Kontrol Et</button>
         <button class="danger" onclick="cancelSignature()">Vazgeç</button>
       </div>
@@ -48,8 +46,10 @@
     var m_imgData = null;
     var m_inkThreshold;
     var m_penData = [];
+    var m_reportHandler = null;
     var m_usbDevices;
     var autoSubmitTimer = null;
+    var captureStarted = false;
     var signatureSent = false;
     var tablet = null;
 
@@ -133,6 +133,8 @@
     }
 
     function startSignature() {
+      if (captureStarted) return;
+      captureStarted = true;
       setStatus("STU imza oturumu başlatılıyor...");
       waitForSigCaptXService(16).then(function (serviceReady) {
         if (!serviceReady) {
@@ -152,16 +154,9 @@
     }
 
     function createModalWindow(width, height) {
-      modalBackground = document.createElement("div");
-      modalBackground.id = "modal-background";
-      modalBackground.className = "active";
-      document.body.appendChild(modalBackground);
-
       formDiv = document.createElement("div");
       formDiv.id = "signatureWindow";
-      formDiv.className = "active";
-      formDiv.style.top = Math.max(20, (window.innerHeight / 2) - (height / 2)) + "px";
-      formDiv.style.left = Math.max(20, (window.innerWidth / 2) - (width / 2)) + "px";
+      formDiv.className = "hidden-capture";
       formDiv.style.width = width + "px";
       formDiv.style.height = height + "px";
       document.body.appendChild(formDiv);
@@ -172,14 +167,23 @@
       canvas.width = formDiv.offsetWidth;
       formDiv.appendChild(canvas);
       ctx = canvas.getContext("2d");
-      canvas.addEventListener("click", onCanvasClick, false);
     }
 
     function disconnect() {
       var deferred = Q.defer();
       if (tablet) {
         var p = new WacomGSS.STU.Protocol();
-        tablet.setInkingMode(p.InkingMode.InkingMode_Off)
+        var stopReporting = Q(true);
+        if (m_reportHandler) {
+          try {
+            stopReporting = m_reportHandler.stopReporting().fail(function () { return true; });
+          } catch (_) {
+            stopReporting = Q(true);
+          }
+        }
+
+        stopReporting
+          .then(function () { m_reportHandler = null; return tablet.setInkingMode(p.InkingMode.InkingMode_Off); })
           .then(function () { return tablet.endCapture(); })
           .then(function (message) {
             if (m_imgData !== null) {
@@ -271,6 +275,7 @@
           return m_encodingMode;
         })
         .then(function () { return tablet.setClearScreen(); })
+        .then(function () { return tablet.setOperationMode(new p.OperationMode_Normal()); })
         .then(function () { return tablet.isSupported(p.ReportId.ReportId_PenDataOptionMode); })
         .then(function (supported) {
           if (!supported) return m_encodingMode;
@@ -313,38 +318,49 @@
         })
         .then(function () { return tablet.setInkingMode(p.InkingMode.InkingMode_On); })
         .then(function () {
-          var reportHandler = new WacomGSS.STU.ProtocolHelper.ReportHandler();
+          m_reportHandler = new WacomGSS.STU.ProtocolHelper.ReportHandler();
           lastPoint = { x: 0, y: 0 };
           isDown = false;
           ctx.lineWidth = 1;
           ctx.strokeStyle = "black";
 
-          var penData = function (report) {
-            processButtons(report, canvas);
-            processPoint(report, canvas, ctx);
-            m_penData.push(report);
+          var handlePenPoint = function (point) {
+            if (!point || typeof point.x !== "number" || typeof point.y !== "number" || typeof point.pressure !== "number") {
+              return;
+            }
+            if (!processButtons(point, canvas)) {
+              return;
+            }
+            processPoint(point, canvas, ctx);
+            m_penData.push(point);
+            setStatus("İmza alınıyor... Nokta sayısı: " + m_penData.length + ". Müşteri imzayı bitirince OK tuşuna basabilir; sistem birkaç saniye içinde otomatik de aktarır.");
             scheduleAutoSubmit();
           };
 
+          var penData = function (report) {
+            if (report && Array.isArray(report.penData)) {
+              for (var i = 0; i < report.penData.length; i++) {
+                handlePenPoint(report.penData[i]);
+              }
+              return;
+            }
+            handlePenPoint(report);
+          };
+
           var penDataEncryptedOption = function (report) {
-            processButtons(report.penData[0], canvas);
-            processPoint(report.penData[0], canvas, ctx);
-            processButtons(report.penData[1], canvas);
-            processPoint(report.penData[1], canvas, ctx);
-            m_penData.push(report.penData[0], report.penData[1]);
-            scheduleAutoSubmit();
+            penData(report);
           };
 
           m_penData = [];
           signatureSent = false;
-          reportHandler.onReportPenData = penData;
-          reportHandler.onReportPenDataOption = penData;
-          reportHandler.onReportPenDataTimeCountSequence = penData;
-          reportHandler.onReportPenDataEncrypted = penDataEncryptedOption;
-          reportHandler.onReportPenDataEncryptedOption = penDataEncryptedOption;
-          reportHandler.onReportPenDataTimeCountSequenceEncrypted = penData;
-          setStatus("İmza cihazı hazır. Müşteri STU ekranına imza atsın; imza birkaç saniye içinde otomatik sisteme aktarılır. İsterse cihazdaki OK veya ekrandaki 'İmzayı Sisteme Aktar' da kullanılabilir.");
-          return reportHandler.startReporting(tablet, true);
+          m_reportHandler.onReportPenData = penData;
+          m_reportHandler.onReportPenDataOption = penData;
+          m_reportHandler.onReportPenDataTimeCountSequence = penData;
+          m_reportHandler.onReportPenDataEncrypted = penDataEncryptedOption;
+          m_reportHandler.onReportPenDataEncryptedOption = penDataEncryptedOption;
+          m_reportHandler.onReportPenDataTimeCountSequenceEncrypted = penData;
+          setStatus("İmza cihazı hazır. Müşteri sadece Wacom STU-430 ekranına imza atsın ve cihazdaki OK tuşuna bassın. İmza otomatik GBEX'e aktarılacak.");
+          return m_reportHandler.startReporting(tablet, true);
         })
         .fail(function (error) {
           if (error instanceof DCANotReady) {
@@ -377,7 +393,25 @@
       m_btns[2].Click = btnCancel_Click;
 
       clearCanvas(canvas, ctx);
+      drawSignaturePrompt();
       drawButtons();
+    }
+
+    function drawSignaturePrompt() {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = "black";
+      ctx.font = "18px Arial";
+      ctx.fillText("LUTFEN IMZALAYIN", 12, 26);
+      ctx.font = "11px Arial";
+      ctx.fillText("Bittiginde OK tusuna basin", 12, 44);
+      ctx.beginPath();
+      ctx.lineWidth = 1;
+      ctx.moveTo(18, Math.round(canvas.height * 0.68));
+      ctx.lineTo(canvas.width - 18, Math.round(canvas.height * 0.68));
+      ctx.stroke();
+      ctx.closePath();
+      ctx.restore();
     }
 
     function drawButtons() {
@@ -402,6 +436,7 @@
 
     function clearScreen() {
       clearCanvas(canvas, ctx);
+      drawSignaturePrompt();
       drawButtons();
       m_penData = [];
       signatureSent = false;
@@ -552,6 +587,9 @@
     setTimeout(function () {
       checkSigCaptX();
     }, TIMEOUT_SHORT);
+    setTimeout(function () {
+      startSignature();
+    }, TIMEOUT_LONG);
   </script>
 </body>
 </html>

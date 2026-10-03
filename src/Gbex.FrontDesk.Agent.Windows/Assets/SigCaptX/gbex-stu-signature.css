@@ -108,3 +108,13 @@ button {
 #signatureWindow.active {
   display: block;
 }
+
+#signatureWindow.hidden-capture {
+  position: absolute;
+  left: -10000px;
+  top: -10000px;
+  display: block;
+  width: 320px;
+  height: 200px;
+  overflow: hidden;
+}
