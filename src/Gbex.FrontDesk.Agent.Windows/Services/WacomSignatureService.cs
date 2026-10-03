@@ -18,8 +18,8 @@ public sealed class WacomSignatureService
         }
 
         return IsSdkAvailable()
-            ? "Wacom STU cihazı algılandı; klasik Wacom STU SDK mevcut. İmza alma gerçek cihaz ekranı üzerinden denenir."
-            : "Wacom STU cihazı algılandı ancak gerçek cihaz ekranından imza için Wacom STU-SigCaptX/SDK kurulumu gerekir. Fallback imza ekranı kullanılmaz.";
+            ? "Wacom STU cihazı algılandı; native Wacom STU SDK hazır. İmza doğrudan STU-430 cihaz ekranından alınır."
+            : "Wacom STU cihazı algılandı ancak native Wacom STU SDK/COM hazır değil. GBEX Agent 32-bit Wacom modülüyle kurulmalı; SigCaptX/WebView fallback kullanılmaz.";
     }
 
     public Task<string> CaptureSignatureAsync(CancellationToken cancellationToken)
@@ -29,12 +29,10 @@ public sealed class WacomSignatureService
         if (!IsSdkAvailable())
         {
             throw new InvalidOperationException(
-                "Wacom STU SDK/driver bu Windows hesabında hazır değil. STU-430 USB cihazı için Wacom STU SDK/driver kurulunca bu buton native imza yakalama modülünü kullanacak. Şimdilik 'İmza Yükle' ile imza görseli sisteme aktarılabilir."
+                "Wacom STU SDK/COM bu Windows hesabında hazır değil. GBEX Agent 32-bit Wacom modülüyle kurulmalı veya Wacom STU SDK kurulumu onarılmalı."
             );
         }
 
-        throw new NotSupportedException(
-            "Wacom STU SDK bulundu fakat imza yakalama akışı için Wacom'un wgssSTU .NET/COM bileşenlerinin hedef PC'deki kesin sürümüyle bağlama yapılması gerekiyor. Bu uygulama ayrı bridge kullanmaz; entegrasyon native SDK üzerinden tamamlanacak."
-        );
+        throw new NotSupportedException("Bu eski servis artık kullanılmıyor; imza WacomStu430CaptureService ile native alınır.");
     }
 }

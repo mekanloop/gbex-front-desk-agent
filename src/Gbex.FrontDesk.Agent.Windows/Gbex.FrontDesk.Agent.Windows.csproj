@@ -3,13 +3,15 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>GbexFrontDeskAgent</AssemblyName>
-    <Version>1.1.3</Version>
-    <AssemblyVersion>1.1.3.0</AssemblyVersion>
-    <FileVersion>1.1.3.0</FileVersion>
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <Version>1.1.4</Version>
+    <AssemblyVersion>1.1.4.0</AssemblyVersion>
+    <FileVersion>1.1.4.0</FileVersion>
+    <RuntimeIdentifiers>win-x86</RuntimeIdentifiers>
+    <PlatformTarget>x86</PlatformTarget>
     <SelfContained>true</SelfContained>
     <ApplicationIcon />
   </PropertyGroup>
@@ -17,10 +19,20 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2957.106" />
     <PackageReference Include="System.Management" Version="8.0.0" />
+    <Reference Include="Interop.wgssSTU">
+      <HintPath>..\..\libs\wacom\Interop.wgssSTU.dll</HintPath>
+      <EmbedInteropTypes>False</EmbedInteropTypes>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="Assets\SigCaptX\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\libs\wacom\wgssSTU.dll" Link="wgssSTU.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\libs\wacom\Interop.wgssSTU.dll" Link="Interop.wgssSTU.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

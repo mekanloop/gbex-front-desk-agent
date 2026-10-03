@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: "1.1.3"
+  APP_VERSION: "1.1.4"
 
 jobs:
   build-test-publish:
@@ -32,11 +32,11 @@ jobs:
       - name: Build
         run: dotnet build Gbex.FrontDesk.Agent.Windows.sln --configuration Release --no-restore -p:Version=${{ env.APP_VERSION }}
 
-      - name: Publish self-contained win-x64
+      - name: Publish self-contained win-x86
         run: >
           dotnet publish src/Gbex.FrontDesk.Agent.Windows/Gbex.FrontDesk.Agent.Windows.csproj
           --configuration Release
-          --runtime win-x64
+          --runtime win-x86
           --self-contained true
           -p:PublishSingleFile=false
           -p:Version=${{ env.APP_VERSION }}
@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Compress-Archive -Path publish\GbexFrontDeskAgent\* -DestinationPath release\GbexFrontDeskAgent-win-x64.zip -Force
+          Compress-Archive -Path publish\GbexFrontDeskAgent\* -DestinationPath release\GbexFrontDeskAgent-win-x86.zip -Force
 
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
@@ -60,15 +60,15 @@ jobs:
       - name: Upload raw publish artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GbexFrontDeskAgent-win-x64
+          name: GbexFrontDeskAgent-win-x86
           path: publish/GbexFrontDeskAgent/**
           if-no-files-found: error
 
       - name: Upload customer zip artifact
         uses: actions/upload-artifact@v4
         with:
-          name: GbexFrontDeskAgent-win-x64-zip
-          path: release/GbexFrontDeskAgent-win-x64.zip
+          name: GbexFrontDeskAgent-win-x86-zip
+          path: release/GbexFrontDeskAgent-win-x86.zip
           if-no-files-found: error
 
       - name: Upload setup artifact
@@ -85,7 +85,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "v$env:APP_VERSION"
-          $zipAsset = "release/GbexFrontDeskAgent-win-x64.zip"
+          $zipAsset = "release/GbexFrontDeskAgent-win-x86.zip"
           $setupAsset = "release/GbexFrontDeskAgentSetup.exe"
           $notes = @"
           GBEX Front Desk Agent $env:APP_VERSION
@@ -97,8 +97,9 @@ jobs:
           - Removes normal operator file-picking buttons to prevent mixing customer documents.
           - Watches only the secure GBEX scan folder for SMB scan-to-folder devices.
           - Prepares the local GBEX scan folder/share and firewall rules when possible.
-          - Supports Wacom STU signature capture through Wacom SigCaptX when installed.
-          - Blocks signature completion instead of opening a mouse/touch fallback when Wacom capture fails.
+          - Captures Wacom STU-430 signatures through the native Wacom STU SDK/COM path, not SigCaptX/WebView.
+          - Publishes as win-x86 to match the common Wacom STU COM runtime used by the official C# samples.
+          - Blocks signature completion instead of opening a mouse/touch fallback when native Wacom capture fails.
           - Recommended customer install: download GbexFrontDeskAgentSetup.exe and run it.
           - If the app fails on the customer PC, check %LOCALAPPDATA%\GBEX\FrontDeskAgent\front-desk-agent.log.
           "@

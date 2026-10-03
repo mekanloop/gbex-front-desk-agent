@@ -1,7 +1,7 @@
 ; GBEX Front Desk Agent — Windows installer
 
 #ifndef AppVersion
-  #define AppVersion "1.1.3"
+  #define AppVersion "1.1.4"
 #endif
 
 [Setup]
@@ -10,7 +10,7 @@ AppName=GBEX Front Desk Agent
 AppVersion={#AppVersion}
 AppPublisher=GBEX
 AppPublisherURL=https://gbex.com.tr
-DefaultDirName={autopf}\GbexFrontDeskAgent
+DefaultDirName={autopf32}\GbexFrontDeskAgent
 DefaultGroupName=GBEX Front Desk Agent
 DisableProgramGroupPage=yes
 OutputBaseFilename=GbexFrontDeskAgentSetup
@@ -18,8 +18,6 @@ OutputDir=..\installer-output
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\GbexFrontDeskAgent.exe
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog

@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private readonly DeviceMonitor _deviceMonitor = new();
     private readonly WiaScannerService _scanner = new();
     private readonly WacomSignatureService _wacom = new();
+    private readonly WacomStu430CaptureService _wacomStu430 = new();
     private readonly HashSet<string> _processedWatchFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<FileSystemWatcher> _identityWatchers = [];
     private ActiveCapture? _activeCapture;
@@ -151,23 +152,13 @@ public partial class MainWindow : Window
     {
         _activeCapture = new ActiveCapture("signature", command.CaptureSessionId, command.AccountId, command.CustomerName ?? "Müşteri");
         NotifyWeb("signature", "waiting", $"Wacom imzası bekleniyor: {_activeCapture.CustomerName}");
-        LastActionText.Text = "Wacom STU/SigCaptX imza penceresi açılıyor.";
+        LastActionText.Text = "Wacom STU-430 native imza oturumu başlatılıyor.";
 
         try
         {
-            var sigCaptXWindow = new SigCaptXSignatureWindow
-            {
-                Owner = this,
-            };
-
-            if (sigCaptXWindow.ShowDialog() == true && !string.IsNullOrWhiteSpace(sigCaptXWindow.CapturedFilePath))
-            {
-                await RunBusyAsync("Wacom STU imzası sisteme yükleniyor...", cancellationToken =>
-                    UploadSignatureFileAsync(sigCaptXWindow.CapturedFilePath, _activeCapture, cancellationToken));
-                return;
-            }
-
-            throw new InvalidOperationException(BuildWacomCaptureError(sigCaptXWindow.LastStatus));
+            var signatureFile = _wacomStu430.CaptureSignature();
+            await RunBusyAsync("Wacom STU-430 imzası sisteme yükleniyor...", cancellationToken =>
+                UploadSignatureFileAsync(signatureFile, _activeCapture, cancellationToken));
         }
         catch (Exception ex)
         {
@@ -206,7 +197,7 @@ public partial class MainWindow : Window
             return $"{message}\n\nSebep: Wacom STU-430 Windows tarafından imza cihazı olarak yakalanamadı. USB kablosu, farklı USB portu ve başka imza programlarının kapalı olduğu kontrol edilmeli.";
         }
 
-        return $"{message}\n\nWacom STU-430 cihazından gerçek imza alınamadı. GBEX Agent v1.1.2 veya üstünü kurup cihazı tekrar deneyin.";
+        return $"{message}\n\nWacom STU-430 cihazından gerçek imza alınamadı. GBEX Agent v1.1.4 veya üstünü kurup cihazı tekrar deneyin.";
     }
 
     private async Task UploadIdentityFileAsync(string filePath, ActiveCapture? capture, CancellationToken cancellationToken)
