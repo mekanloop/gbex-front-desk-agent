@@ -30,7 +30,13 @@ jobs:
         run: dotnet restore Gbex.FrontDesk.Agent.Windows.sln
 
       - name: Build
-        run: dotnet build Gbex.FrontDesk.Agent.Windows.sln --configuration Release --no-restore -p:Version=${{ env.APP_VERSION }}
+        run: >
+          dotnet build src/Gbex.FrontDesk.Agent.Windows/Gbex.FrontDesk.Agent.Windows.csproj
+          --configuration Release
+          --runtime win-x86
+          --no-restore
+          -p:Version=${{ env.APP_VERSION }}
+          -p:PlatformTarget=x86
 
       - name: Publish self-contained win-x86
         run: >
@@ -40,6 +46,7 @@ jobs:
           --self-contained true
           -p:PublishSingleFile=false
           -p:Version=${{ env.APP_VERSION }}
+          -p:PlatformTarget=x86
           --output publish/GbexFrontDeskAgent
 
       - name: Package customer zip

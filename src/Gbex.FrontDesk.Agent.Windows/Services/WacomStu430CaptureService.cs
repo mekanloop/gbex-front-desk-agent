@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
+using WinFormsDialogResult = System.Windows.Forms.DialogResult;
 
 namespace Gbex.FrontDesk.Agent.Windows.Services;
 
@@ -29,12 +30,12 @@ public sealed class WacomStu430CaptureService
 
         using var form = new WacomStu430SignatureForm(devices[0]);
         var result = form.ShowDialog();
-        if (result == DialogResult.Cancel)
+        if (result == WinFormsDialogResult.Cancel)
         {
             throw new OperationCanceledException("Wacom imza alma iptal edildi.");
         }
 
-        if (result != DialogResult.OK || string.IsNullOrWhiteSpace(form.SignatureFilePath))
+        if (result != WinFormsDialogResult.OK || string.IsNullOrWhiteSpace(form.SignatureFilePath))
         {
             throw new InvalidOperationException(form.LastError ?? "Wacom STU imzası alınamadı.");
         }
@@ -127,7 +128,7 @@ internal sealed class WacomStu430SignatureForm : Form
         catch (Exception ex)
         {
             LastError = $"Wacom STU bağlantısı kurulamadı: {ex.Message}";
-            DialogResult = DialogResult.Abort;
+            DialogResult = WinFormsDialogResult.Abort;
             Close();
         }
     }
@@ -310,13 +311,13 @@ internal sealed class WacomStu430SignatureForm : Form
 
         SignatureFilePath = RenderSignaturePng();
         _completed = true;
-        DialogResult = DialogResult.OK;
+        DialogResult = WinFormsDialogResult.OK;
         Close();
     }
 
     private void CancelSignature()
     {
-        DialogResult = DialogResult.Cancel;
+        DialogResult = WinFormsDialogResult.Cancel;
         Close();
     }
 
@@ -394,7 +395,7 @@ internal sealed class WacomStu430SignatureForm : Form
             LastError = $"Wacom bağlantısı koptu: {ex.Message}";
             BeginInvoke(new Action(() =>
             {
-                DialogResult = DialogResult.Abort;
+                DialogResult = WinFormsDialogResult.Abort;
                 Close();
             }));
         }
@@ -485,9 +486,9 @@ internal sealed class WacomStu430SignatureForm : Form
 
         _inkPen?.Dispose();
         _padBitmap?.Dispose();
-        if (!_completed && DialogResult == DialogResult.None)
+        if (!_completed && DialogResult == WinFormsDialogResult.None)
         {
-            DialogResult = DialogResult.Cancel;
+            DialogResult = WinFormsDialogResult.Cancel;
         }
     }
 
