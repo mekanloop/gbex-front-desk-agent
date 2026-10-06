@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     private readonly HashSet<string> _processedWatchFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<FileSystemWatcher> _identityWatchers = [];
     private ActiveCapture? _activeCapture;
+    private bool _signatureCaptureInProgress;
 
     public MainWindow()
     {
@@ -97,6 +98,8 @@ public partial class MainWindow : Window
 
     private async void FrontDeskWebView_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
     {
+        if (!Uri.TryCreate(e.Source, UriKind.Absolute, out var sourceUri)
+            || sourceUri.GetLeftPart(UriPartial.Authority) != FrontDeskUri.GetLeftPart(UriPartial.Authority)) return;
         WebCaptureCommand? command;
         try
         {
@@ -115,6 +118,8 @@ public partial class MainWindow : Window
         {
             return;
         }
+
+        if (_signatureCaptureInProgress) return;
 
         if (command.Action == "capture_identity")
         {
@@ -150,7 +155,10 @@ public partial class MainWindow : Window
 
     private async Task BeginSignatureCaptureAsync(WebCaptureCommand command)
     {
-        _activeCapture = new ActiveCapture("signature", command.CaptureSessionId, command.AccountId, command.CustomerName ?? "Müşteri");
+        if (_signatureCaptureInProgress) return;
+        _signatureCaptureInProgress = true;
+        var capture = new ActiveCapture("signature", command.CaptureSessionId, command.AccountId, command.CustomerName ?? "Müşteri");
+        _activeCapture = capture;
         NotifyWeb("signature", "waiting", $"Wacom imzası bekleniyor: {_activeCapture.CustomerName}");
         LastActionText.Text = "Wacom STU-430 native imza oturumu başlatılıyor.";
 
@@ -158,7 +166,7 @@ public partial class MainWindow : Window
         {
             var signatureFile = _wacomStu430.CaptureSignature();
             await RunBusyAsync("Wacom STU-430 imzası sisteme yükleniyor...", cancellationToken =>
-                UploadSignatureFileAsync(signatureFile, _activeCapture, cancellationToken));
+                UploadSignatureFileAsync(signatureFile, capture, cancellationToken));
         }
         catch (Exception ex)
         {
@@ -171,6 +179,11 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning
             );
+        }
+        finally
+        {
+            _signatureCaptureInProgress = false;
+            if (ReferenceEquals(_activeCapture, capture)) _activeCapture = null;
         }
     }
 

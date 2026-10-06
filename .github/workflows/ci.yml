@@ -27,7 +27,7 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Restore
-        run: dotnet restore Gbex.FrontDesk.Agent.Windows.sln
+        run: dotnet restore src/Gbex.FrontDesk.Agent.Windows/Gbex.FrontDesk.Agent.Windows.csproj --runtime win-x86
 
       - name: Build
         run: >
@@ -48,6 +48,19 @@ jobs:
           -p:Version=${{ env.APP_VERSION }}
           -p:PlatformTarget=x86
           --output publish/GbexFrontDeskAgent
+
+      - name: Verify bundled Wacom COM activation without SDK installation
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath "$pwd/publish/GbexFrontDeskAgent/GbexFrontDeskAgent.exe" -ArgumentList "--wacom-sdk-self-test" -PassThru -RedirectStandardOutput wacom-sdk.out -RedirectStandardError wacom-sdk.err
+          if (-not $process.WaitForExit(30000)) {
+            $process.Kill()
+            throw "Wacom SDK activation timed out"
+          }
+          $process.Refresh()
+          Get-Content wacom-sdk.out, wacom-sdk.err
+          if ($process.ExitCode -ne 0) { throw "Bundled Wacom SDK failed to activate: $($process.ExitCode)" }
+          if (-not (Select-String -Path wacom-sdk.out -Pattern "WACOM_SDK_OK" -Quiet)) { throw "Wacom SDK self-test did not complete" }
 
       - name: Package customer zip
         shell: pwsh

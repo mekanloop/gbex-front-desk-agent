@@ -1,38 +1,52 @@
+using System.Runtime.InteropServices;
+
 namespace Gbex.FrontDesk.Agent.Windows.Services;
 
 public sealed class WacomSignatureService
 {
-    public bool IsSdkAvailable()
-    {
-        // Wacom STU SDK normally registers COM classes named wgssSTU.*.
-        // Driver/device detection is handled by DeviceMonitor; this check is
-        // for actual native signature capture capability.
-        return Type.GetTypeFromProgID("wgssSTU.UsbDevices") is not null;
-    }
-
     public string StatusText(bool deviceDetected)
     {
-        if (!deviceDetected)
+        // Use the same typed activation as capture, including registration-free COM.
+        wgssSTU.UsbDevices? devices = null;
+        try
         {
-            return "Wacom STU cihazı USB'de görünmüyor.";
+            devices = new wgssSTU.UsbDevices();
+            return devices.Count > 0
+                ? $"Wacom STU SDK hazır; USB üzerinden {devices.Count} imza pedi bulundu. İmza cihaz ekranından alınır."
+                : "Wacom STU SDK hazır; bağlı imza pedi bulunamadı. USB bağlantısını kontrol edin.";
         }
-
-        return IsSdkAvailable()
-            ? "Wacom STU cihazı algılandı; native Wacom STU SDK hazır. İmza doğrudan STU-430 cihaz ekranından alınır."
-            : "Wacom STU cihazı algılandı ancak native Wacom STU SDK/COM hazır değil. GBEX Agent 32-bit Wacom modülüyle kurulmalı; SigCaptX/WebView fallback kullanılmaz.";
+        catch (Exception ex)
+        {
+            return $"Wacom imza bileşeni yüklenemedi (0x{ex.HResult:X8}). Front Desk Agent kurulumunu güncelleyin.";
+        }
+        finally
+        {
+            if (devices is not null) Marshal.ReleaseComObject(devices);
+        }
     }
 
-    public Task<string> CaptureSignatureAsync(CancellationToken cancellationToken)
+    public static int VerifyBundledSdk()
     {
-        cancellationToken.ThrowIfCancellationRequested();
-
-        if (!IsSdkAvailable())
+        object? devices = null;
+        object? tablet = null;
+        object? helper = null;
+        try
         {
-            throw new InvalidOperationException(
-                "Wacom STU SDK/COM bu Windows hesabında hazır değil. GBEX Agent 32-bit Wacom modülüyle kurulmalı veya Wacom STU SDK kurulumu onarılmalı."
-            );
+            devices = new wgssSTU.UsbDevices();
+            tablet = new wgssSTU.Tablet();
+            helper = new wgssSTU.ProtocolHelper();
+            Console.WriteLine("WACOM_SDK_OK: UsbDevices, Tablet and ProtocolHelper activated.");
+            return 0;
         }
-
-        throw new NotSupportedException("Bu eski servis artık kullanılmıyor; imza WacomStu430CaptureService ile native alınır.");
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"WACOM_SDK_LOAD_FAILED: {ex}");
+            return 1;
+        }
+        finally
+        {
+            foreach (var value in new[] { helper, tablet, devices })
+                if (value is not null) Marshal.ReleaseComObject(value);
+        }
     }
 }

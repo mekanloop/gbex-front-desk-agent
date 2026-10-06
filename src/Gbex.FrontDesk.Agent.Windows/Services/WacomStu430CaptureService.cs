@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
+using System.Runtime.InteropServices;
 using WinFormsDialogResult = System.Windows.Forms.DialogResult;
 
 namespace Gbex.FrontDesk.Agent.Windows.Services;
@@ -23,24 +24,28 @@ public sealed class WacomStu430CaptureService
             );
         }
 
-        if (devices.Count == 0)
+        wgssSTU.IUsbDevice? device = null;
+        try
         {
-            throw new InvalidOperationException("Wacom STU-430 cihazı bulunamadı. USB kablosunu çıkarıp tekrar takın ve tekrar deneyin.");
-        }
+            if (devices.Count == 0)
+                throw new InvalidOperationException("Wacom STU-430 cihazı bulunamadı. USB bağlantısını kontrol edin.");
 
-        using var form = new WacomStu430SignatureForm(devices[0]);
-        var result = form.ShowDialog();
-        if (result == WinFormsDialogResult.Cancel)
+            device = devices[0];
+            using var form = new WacomStu430SignatureForm(device);
+            var result = form.ShowDialog();
+            if (result == WinFormsDialogResult.Cancel)
+                throw new OperationCanceledException("Wacom imza alma iptal edildi.");
+
+            if (result != WinFormsDialogResult.OK || string.IsNullOrWhiteSpace(form.SignatureFilePath))
+                throw new InvalidOperationException(form.LastError ?? "Wacom STU imzası alınamadı.");
+
+            return form.SignatureFilePath;
+        }
+        finally
         {
-            throw new OperationCanceledException("Wacom imza alma iptal edildi.");
+            if (device is not null) Marshal.ReleaseComObject(device);
+            Marshal.ReleaseComObject(devices);
         }
-
-        if (result != WinFormsDialogResult.OK || string.IsNullOrWhiteSpace(form.SignatureFilePath))
-        {
-            throw new InvalidOperationException(form.LastError ?? "Wacom STU imzası alınamadı.");
-        }
-
-        return form.SignatureFilePath;
     }
 }
 
@@ -68,8 +73,7 @@ internal sealed class WacomStu430SignatureForm : Form
     private wgssSTU.ICapability? _capability;
     private wgssSTU.IInformation? _information;
     private readonly List<PenPoint> _points = [];
-    private readonly List<wgssSTU.IPenData> _penData = [];
-    private readonly List<wgssSTU.IPenDataTimeCountSequence> _penTimeData = [];
+    private readonly System.Windows.Forms.Timer _timeout = new() { Interval = 120000 };
     private PadButton[] _buttons = [];
     private Bitmap? _padBitmap;
     private byte[]? _padBitmapData;
@@ -78,6 +82,7 @@ internal sealed class WacomStu430SignatureForm : Form
     private int _isDown;
     private int _penDataMode;
     private bool _completed;
+    private bool _closing;
 
     public string? SignatureFilePath { get; private set; }
     public string? LastError { get; private set; }
@@ -103,6 +108,7 @@ internal sealed class WacomStu430SignatureForm : Form
         });
         Shown += (_, _) => BeginCapture();
         FormClosed += (_, _) => DisconnectTablet();
+        _timeout.Tick += (_, _) => FailCapture("İmza süresi doldu. Yeniden imza almayı başlatın.");
     }
 
     private void BeginCapture()
@@ -124,6 +130,7 @@ internal sealed class WacomStu430SignatureForm : Form
             AddTabletDelegates();
             ClearPad();
             _tablet.setInkingMode(0x01);
+            _timeout.Start();
         }
         catch (Exception ex)
         {
@@ -292,8 +299,6 @@ internal sealed class WacomStu430SignatureForm : Form
     {
         if (_tablet is null || _padBitmapData is null) return;
         _points.Clear();
-        _penData.Clear();
-        _penTimeData.Clear();
         _isDown = 0;
         _tablet.writeImage((byte)_encodingMode, _padBitmapData);
         Invalidate();
@@ -392,12 +397,7 @@ internal sealed class WacomStu430SignatureForm : Form
         }
         catch (Exception ex)
         {
-            LastError = $"Wacom bağlantısı koptu: {ex.Message}";
-            BeginInvoke(new Action(() =>
-            {
-                DialogResult = WinFormsDialogResult.Abort;
-                Close();
-            }));
+            DispatchPadAction(() => FailCapture($"Wacom bağlantısı koptu: {ex.Message}"));
         }
     }
 
@@ -414,16 +414,38 @@ internal sealed class WacomStu430SignatureForm : Form
 
     private void OnPenDataTimeCountSequence(wgssSTU.IPenDataTimeCountSequence penData)
     {
-        HandlePoint(penData.x, penData.y, penData.pressure, penData.sw != 0);
-        if (penData.sw != 0 && _isDown == -1) _penTimeData.Add(penData);
-        else if (penData.sw == 0 && _penTimeData.Count != 0) _penTimeData.Add(penData);
+        QueuePoint(penData.x, penData.y, penData.pressure, penData.sw != 0);
     }
 
     private void OnPenData(wgssSTU.IPenData penData)
     {
-        HandlePoint(penData.x, penData.y, penData.pressure, penData.sw != 0);
-        if (penData.sw != 0 && _isDown == -1) _penData.Add(penData);
-        else if (penData.sw == 0 && _penData.Count != 0) _penData.Add(penData);
+        QueuePoint(penData.x, penData.y, penData.pressure, penData.sw != 0);
+    }
+
+    private void QueuePoint(ushort x, ushort y, ushort pressure, bool down) =>
+        DispatchPadAction(() => HandlePoint(x, y, pressure, down));
+
+    private void DispatchPadAction(Action action)
+    {
+        if (_closing || IsDisposed || !IsHandleCreated) return;
+        try
+        {
+            BeginInvoke(new Action(() =>
+            {
+                if (_closing || IsDisposed) return;
+                try { action(); }
+                catch (Exception ex) { FailCapture($"Wacom imzası işlenemedi: {ex.Message}"); }
+            }));
+        }
+        catch (InvalidOperationException) when (_closing || IsDisposed || !IsHandleCreated) { }
+    }
+
+    private void FailCapture(string message)
+    {
+        if (_closing) return;
+        LastError = message;
+        DialogResult = WinFormsDialogResult.Abort;
+        Close();
     }
 
     private void HandlePoint(ushort x, ushort y, ushort pressure, bool down)
@@ -454,7 +476,7 @@ internal sealed class WacomStu430SignatureForm : Form
             if (button > 0 && button == _isDown)
             {
                 var click = _buttons[button - 1].Click;
-                BeginInvoke(new Action(() => click()));
+                DispatchPadAction(() => click());
             }
             if (_isDown == -1)
             {
@@ -475,12 +497,20 @@ internal sealed class WacomStu430SignatureForm : Form
 
     private void DisconnectTablet()
     {
+        _closing = true;
+        _timeout.Stop();
+        _timeout.Dispose();
         RemoveTabletDelegates();
         if (_tablet is not null)
         {
             try { _tablet.setInkingMode(0x00); } catch { }
             try { _tablet.setClearScreen(); } catch { }
             try { _tablet.disconnect(); } catch { }
+            if (_information is not null) Marshal.ReleaseComObject(_information);
+            if (_capability is not null) Marshal.ReleaseComObject(_capability);
+            Marshal.ReleaseComObject(_tablet);
+            _information = null;
+            _capability = null;
             _tablet = null;
         }
 

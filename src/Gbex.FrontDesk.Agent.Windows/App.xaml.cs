@@ -12,6 +12,11 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (e.Args.Contains("--wacom-sdk-self-test"))
+        {
+            Environment.Exit(Services.WacomSignatureService.VerifyBundledSdk());
+            return;
+        }
         base.OnStartup(e);
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
         {
