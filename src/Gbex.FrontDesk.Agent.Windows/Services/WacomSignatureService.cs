@@ -28,14 +28,20 @@ public sealed class WacomSignatureService
     public static int VerifyBundledSdk()
     {
         object? devices = null;
-        object? tablet = null;
+        wgssSTU.Tablet? tablet = null;
         object? helper = null;
         try
         {
             devices = new wgssSTU.UsbDevices();
             tablet = new wgssSTU.Tablet();
             helper = new wgssSTU.ProtocolHelper();
-            Console.WriteLine("WACOM_SDK_OK: UsbDevices, Tablet and ProtocolHelper activated.");
+            wgssSTU.ITabletEvents2_onPenDataEventHandler penHandler = _ => { };
+            wgssSTU.ITabletEvents2_onPenDataTimeCountSequenceEventHandler timedPenHandler = _ => { };
+            tablet.onPenData += penHandler;
+            tablet.onPenDataTimeCountSequence += timedPenHandler;
+            tablet.onPenData -= penHandler;
+            tablet.onPenDataTimeCountSequence -= timedPenHandler;
+            Console.WriteLine("WACOM_SDK_OK: SDK classes activated and pen event sinks attached/detached.");
             return 0;
         }
         catch (Exception ex)

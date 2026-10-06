@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 env:
-  APP_VERSION: "1.1.4"
+  APP_VERSION: "1.1.5"
 
 jobs:
   build-test-publish:
@@ -61,6 +61,19 @@ jobs:
           Get-Content wacom-sdk.out, wacom-sdk.err
           if ($process.ExitCode -ne 0) { throw "Bundled Wacom SDK failed to activate: $($process.ExitCode)" }
           if (-not (Select-String -Path wacom-sdk.out -Pattern "WACOM_SDK_OK" -Quiet)) { throw "Wacom SDK self-test did not complete" }
+
+      - name: Verify synthetic pen capture and upload receipt checks
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath "$pwd/publish/GbexFrontDeskAgent/GbexFrontDeskAgent.exe" -ArgumentList "--wacom-capture-self-test" -PassThru -RedirectStandardOutput wacom-capture.out -RedirectStandardError wacom-capture.err
+          if (-not $process.WaitForExit(30000)) {
+            $process.Kill()
+            throw "Wacom capture checks timed out"
+          }
+          $process.Refresh()
+          Get-Content wacom-capture.out, wacom-capture.err
+          if ($process.ExitCode -ne 0) { throw "Wacom capture checks failed: $($process.ExitCode)" }
+          if (-not (Select-String -Path wacom-capture.out -Pattern "WACOM_CAPTURE_CHECKS_OK" -Quiet)) { throw "Wacom capture checks did not complete" }
 
       - name: Package customer zip
         shell: pwsh
@@ -120,6 +133,9 @@ jobs:
           - Captures Wacom STU-430 signatures through the native Wacom STU SDK/COM path, not SigCaptX/WebView.
           - Publishes as win-x86 to match the common Wacom STU COM runtime used by the official C# samples.
           - Blocks signature completion instead of opening a mouse/touch fallback when native Wacom capture fails.
+          - Retries briefly busy USB connections following Wacom DemoButtons guidance.
+          - Verifies the saved signature record matches the active account and capture session before reporting success.
+          - Tests pen/button processing and PNG output with synthetic data on Windows. Physical STU-430 capture still requires an on-device acceptance test.
           - Recommended customer install: download GbexFrontDeskAgentSetup.exe and run it.
           - If the app fails on the customer PC, check %LOCALAPPDATA%\GBEX\FrontDeskAgent\front-desk-agent.log.
           "@

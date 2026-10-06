@@ -161,10 +161,11 @@ public partial class MainWindow : Window
         _activeCapture = capture;
         NotifyWeb("signature", "waiting", $"Wacom imzası bekleniyor: {_activeCapture.CustomerName}");
         LastActionText.Text = "Wacom STU-430 native imza oturumu başlatılıyor.";
+        string? signatureFile = null;
 
         try
         {
-            var signatureFile = _wacomStu430.CaptureSignature();
+            signatureFile = _wacomStu430.CaptureSignature();
             await RunBusyAsync("Wacom STU-430 imzası sisteme yükleniyor...", cancellationToken =>
                 UploadSignatureFileAsync(signatureFile, capture, cancellationToken));
         }
@@ -182,6 +183,10 @@ public partial class MainWindow : Window
         }
         finally
         {
+            if (signatureFile is not null)
+            {
+                try { File.Delete(signatureFile); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
             _signatureCaptureInProgress = false;
             if (ReferenceEquals(_activeCapture, capture)) _activeCapture = null;
         }
@@ -249,7 +254,7 @@ public partial class MainWindow : Window
         var uploader = new FrontDeskUploader(FrontDeskWebView.CoreWebView2, FrontDeskUri);
         using var result = await uploader.UploadSignatureImageAsync(filePath, capture.CaptureSessionId, capture.AccountId, cancellationToken);
         LastActionText.Text = $"İmza dosyası front desk paneline yüklendi: {Path.GetFileName(filePath)}";
-        NotifyWeb("signature", "uploaded", "Müşteri imzası aktif satışa yüklendi.", result.RootElement.Clone());
+        NotifyWeb("signature", "uploaded", "Müşteri imzası aktif satışa kaydedildi ve kayıt doğrulandı.", result.RootElement.Clone());
         _activeCapture = null;
     }
 

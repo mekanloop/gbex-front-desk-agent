@@ -72,14 +72,12 @@ internal sealed class WacomStu430SignatureForm : Form
     private wgssSTU.Tablet? _tablet;
     private wgssSTU.ICapability? _capability;
     private wgssSTU.IInformation? _information;
-    private readonly List<PenPoint> _points = [];
+    private SignatureInk? _ink;
     private readonly System.Windows.Forms.Timer _timeout = new() { Interval = 120000 };
     private PadButton[] _buttons = [];
     private Bitmap? _padBitmap;
     private byte[]? _padBitmapData;
     private wgssSTU.encodingMode _encodingMode;
-    private Pen? _inkPen;
-    private int _isDown;
     private int _penDataMode;
     private bool _completed;
     private bool _closing;
@@ -106,24 +104,35 @@ internal sealed class WacomStu430SignatureForm : Form
             Font = new Font("Segoe UI", 12F, FontStyle.Bold),
             Text = "Müşteri Wacom STU-430 cihazında imza atıyor.\n\nİmza cihaz ekranında atılacak.\nBittiğinde cihazdaki OK tuşuna basın.",
         });
-        Shown += (_, _) => BeginCapture();
+        Shown += async (_, _) => await BeginCaptureAsync();
         FormClosed += (_, _) => DisconnectTablet();
         _timeout.Tick += (_, _) => FailCapture("İmza süresi doldu. Yeniden imza almayı başlatın.");
     }
 
-    private void BeginCapture()
+    private async Task BeginCaptureAsync()
     {
         try
         {
             _tablet = new wgssSTU.Tablet();
-            var error = _tablet.usbConnect(_usbDevice, true);
-            if (error.value != 0)
+            // Wacom's DemoButtons notes that STU Display/background processes
+            // may hold the device briefly; retry without blocking the UI.
+            for (var attempt = 0; ; attempt++)
             {
-                throw new InvalidOperationException(error.message);
+                if (_closing) return;
+                var error = _tablet.usbConnect(_usbDevice, true);
+                var value = error.value;
+                var message = error.message;
+                Marshal.ReleaseComObject(error);
+                if (value == 0) break;
+                if (attempt == 3)
+                    throw new InvalidOperationException($"Wacom USB bağlantısı kurulamadı. Cihazı kullanan diğer imza uygulamalarını kapatın. ({value}: {message})");
+                await Task.Delay(350);
             }
 
             _capability = _tablet.getCapability();
             _information = _tablet.getInformation();
+            _ink = new SignatureInk(_capability.tabletMaxX, _capability.tabletMaxY,
+                _capability.screenWidth, _capability.screenHeight);
             ConfigurePenDataMode();
             ConfigureButtons();
             ConfigurePadImage();
@@ -134,6 +143,7 @@ internal sealed class WacomStu430SignatureForm : Form
         }
         catch (Exception ex)
         {
+            if (_closing) return;
             LastError = $"Wacom STU bağlantısı kurulamadı: {ex.Message}";
             DialogResult = WinFormsDialogResult.Abort;
             Close();
@@ -259,13 +269,7 @@ internal sealed class WacomStu430SignatureForm : Form
             0
         );
 
-        var scale = AutoScaleDimensions;
-        _inkPen = new Pen(Color.Black, 0.7F / 25.4F * ((scale.Width + scale.Height) / 2F))
-        {
-            StartCap = LineCap.Round,
-            EndCap = LineCap.Round,
-            LineJoin = LineJoin.Round,
-        };
+        Marshal.ReleaseComObject(helper);
     }
 
     private void AddTabletDelegates()
@@ -298,15 +302,14 @@ internal sealed class WacomStu430SignatureForm : Form
     private void ClearPad()
     {
         if (_tablet is null || _padBitmapData is null) return;
-        _points.Clear();
-        _isDown = 0;
+        _ink?.Clear();
         _tablet.writeImage((byte)_encodingMode, _padBitmapData);
         Invalidate();
     }
 
     private void ConfirmSignature()
     {
-        if (_points.Count < 8 || !HasMeaningfulBounds())
+        if (_ink is null || !_ink.IsMeaningful)
         {
             LastError = "İmza boş veya çok kısa. Lütfen tekrar imza alın.";
             MessageBox.Show(this, LastError, "GBEX Wacom STU", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -326,60 +329,10 @@ internal sealed class WacomStu430SignatureForm : Form
         Close();
     }
 
-    private bool HasMeaningfulBounds()
-    {
-        if (_points.Count == 0) return false;
-        var minX = _points.Min(point => point.X);
-        var maxX = _points.Max(point => point.X);
-        var minY = _points.Min(point => point.Y);
-        var maxY = _points.Max(point => point.Y);
-        return maxX - minX > 120 && maxY - minY > 80;
-    }
-
     private string RenderSignaturePng()
     {
-        if (_capability is null || _inkPen is null) throw new InvalidOperationException("Wacom ekran bilgisi okunamadı.");
-
-        const int width = 1200;
-        var height = Math.Max(360, (int)Math.Round(width * (_capability.tabletMaxY / (double)_capability.tabletMaxX)));
-        using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        using var gfx = Graphics.FromImage(bitmap);
-        gfx.Clear(Color.Transparent);
-        gfx.CompositingQuality = CompositingQuality.HighQuality;
-        gfx.InterpolationMode = InterpolationMode.HighQualityBicubic;
-        gfx.PixelOffsetMode = PixelOffsetMode.HighQuality;
-        gfx.SmoothingMode = SmoothingMode.HighQuality;
-
-        using var pen = new Pen(Color.Black, 4F)
-        {
-            StartCap = LineCap.Round,
-            EndCap = LineCap.Round,
-            LineJoin = LineJoin.Round,
-        };
-
-        PenPoint? previous = null;
-        foreach (var point in _points)
-        {
-            if (!point.Down)
-            {
-                previous = null;
-                continue;
-            }
-
-            var current = new PointF(
-                (float)(point.X * width / (double)_capability.tabletMaxX),
-                (float)(point.Y * height / (double)_capability.tabletMaxY)
-            );
-            if (previous is { Down: true } prev)
-            {
-                var previousPoint = new PointF(
-                    (float)(prev.X * width / (double)_capability.tabletMaxX),
-                    (float)(prev.Y * height / (double)_capability.tabletMaxY)
-                );
-                gfx.DrawLine(pen, previousPoint, current);
-            }
-            previous = point;
-        }
+        if (_ink is null) throw new InvalidOperationException("Wacom ekran bilgisi okunamadı.");
+        using var bitmap = _ink.Render();
 
         var target = Path.Combine(
             Path.GetTempPath(),
@@ -450,49 +403,10 @@ internal sealed class WacomStu430SignatureForm : Form
 
     private void HandlePoint(ushort x, ushort y, ushort pressure, bool down)
     {
-        if (_capability is null) return;
-
-        var screenPoint = new Point(
-            (int)Math.Round(x * _capability.screenWidth / (double)_capability.tabletMaxX),
-            (int)Math.Round(y * _capability.screenHeight / (double)_capability.tabletMaxY)
-        );
-        var button = ButtonAt(screenPoint);
-
-        if (down)
-        {
-            if (_isDown == 0)
-            {
-                _isDown = button > 0 ? button : -1;
-            }
-            if (_isDown == -1)
-            {
-                _points.Add(new PenPoint(x, y, pressure, true));
-            }
-            return;
-        }
-
-        if (_isDown != 0)
-        {
-            if (button > 0 && button == _isDown)
-            {
-                var click = _buttons[button - 1].Click;
-                DispatchPadAction(() => click());
-            }
-            if (_isDown == -1)
-            {
-                _points.Add(new PenPoint(x, y, pressure, false));
-            }
-            _isDown = 0;
-        }
-    }
-
-    private int ButtonAt(Point point)
-    {
-        for (var i = 0; i < _buttons.Length; i++)
-        {
-            if (_buttons[i].Bounds.Contains(point)) return i + 1;
-        }
-        return 0;
+        var button = _ink?.Add(x, y, pressure, down) ?? 0;
+        // Already on the UI thread. Handle the action before the next pen
+        // report so clearing/confirming cannot race queued stroke data.
+        if (button > 0) _buttons[button - 1].Click();
     }
 
     private void DisconnectTablet()
@@ -514,7 +428,6 @@ internal sealed class WacomStu430SignatureForm : Form
             _tablet = null;
         }
 
-        _inkPen?.Dispose();
         _padBitmap?.Dispose();
         if (!_completed && DialogResult == WinFormsDialogResult.None)
         {
@@ -522,5 +435,4 @@ internal sealed class WacomStu430SignatureForm : Form
         }
     }
 
-    private readonly record struct PenPoint(ushort X, ushort Y, ushort Pressure, bool Down);
 }

@@ -92,7 +92,27 @@ public sealed class FrontDeskUploader
             throw new InvalidOperationException($"{errorPrefix} ({(int)response.StatusCode}): {ExtractErrorMessage(body)}");
         }
 
-        return JsonDocument.Parse(body);
+        var result = JsonDocument.Parse(body);
+        if (fieldName == "signatureImage")
+        {
+            try
+            {
+                // Read the persisted record through the same staff/session scope.
+                // A 2xx upload alone is not enough to notify the panel of success.
+                var readbackUrl = $"{endpoint}?captureSessionId={Uri.EscapeDataString(captureSessionId)}&accountId={Uri.EscapeDataString(accountId)}";
+                using var readbackResponse = await client.GetAsync(readbackUrl, cancellationToken);
+                if (!readbackResponse.IsSuccessStatusCode)
+                    throw new InvalidOperationException("İmza gönderildi ancak sunucudaki kayıt doğrulanamadı. Satışı tamamlamadan tekrar deneyin.");
+                using var readback = JsonDocument.Parse(await readbackResponse.Content.ReadAsStringAsync(cancellationToken));
+                SignatureUploadReceipt.Validate(result.RootElement, readback.RootElement, captureSessionId, accountId);
+            }
+            catch
+            {
+                result.Dispose();
+                throw;
+            }
+        }
+        return result;
     }
 
     private static string ExtractErrorMessage(string body)
