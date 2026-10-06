@@ -64,7 +64,29 @@ public partial class MainWindow : Window
             await FrontDeskWebView.EnsureCoreWebView2Async(env);
             FrontDeskWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
             FrontDeskWebView.CoreWebView2.Settings.IsStatusBarEnabled = true;
+            // This is the actual browser-to-native transport used by the
+            // front-desk page. Set it explicitly instead of relying on the
+            // WebView2 default, which has differed across runtime versions.
+            FrontDeskWebView.CoreWebView2.Settings.IsWebMessageEnabled = true;
+            await FrontDeskWebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync($$"""
+                (() => {
+                  const bridge = {
+                    version: '{{App.AgentVersion}}',
+                    postMessage(message) {
+                      if (!window.chrome || !window.chrome.webview || typeof window.chrome.webview.postMessage !== 'function') {
+                        throw new Error('GBEX native bridge is unavailable.');
+                      }
+                      window.chrome.webview.postMessage(message);
+                    }
+                  };
+                  Object.defineProperty(window, '__GBEX_FRONT_DESK_AGENT__', { value: bridge, configurable: false });
+                  window.chrome.webview.addEventListener('message', event => {
+                    window.dispatchEvent(new CustomEvent('gbex-front-desk-agent', { detail: event.data }));
+                  });
+                })();
+                """);
             FrontDeskWebView.CoreWebView2.WebMessageReceived += FrontDeskWebView_WebMessageReceived;
+            FrontDeskWebView.CoreWebView2.NavigationCompleted += FrontDeskWebView_NavigationCompleted;
             FrontDeskWebView.Source = FrontDeskUri;
             ConnectionStatusText.Text = "GBEX Front Desk paneli açıldı.";
         }
@@ -72,6 +94,24 @@ public partial class MainWindow : Window
         {
             ConnectionStatusText.Text = $"Web panel açılamadı: {ex.Message}";
             LastActionText.Text = ex.ToString();
+        }
+    }
+
+    private async void FrontDeskWebView_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+    {
+        if (!e.IsSuccess || FrontDeskWebView.CoreWebView2 is null) return;
+        try
+        {
+            var status = await FrontDeskWebView.CoreWebView2.ExecuteScriptAsync(
+                "JSON.stringify({bridge: !!window.__GBEX_FRONT_DESK_AGENT__, webMessage: !!(window.chrome && window.chrome.webview && window.chrome.webview.postMessage)})"
+            );
+            LastActionText.Text = status.Contains("true", StringComparison.Ordinal)
+                ? "Windows uygulaması ile panel bağlantısı hazır."
+                : "Windows uygulaması bağlantısı başlatılamadı; panel yeniden yükleniyor.";
+        }
+        catch
+        {
+            LastActionText.Text = "Windows uygulaması bağlantısı başlatılamadı; panel yeniden yükleniyor.";
         }
     }
 
@@ -129,6 +169,7 @@ public partial class MainWindow : Window
 
         if (command.Action == "capture_signature")
         {
+            NotifyWeb("signature", "accepted", "Wacom imza komutu Windows uygulaması tarafından alındı.");
             await BeginSignatureCaptureAsync(command);
         }
     }
@@ -494,12 +535,7 @@ public partial class MainWindow : Window
             }
         }
 
-        var json = JsonSerializer.Serialize(detail, new JsonSerializerOptions
-        {
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        });
-        var script = $"window.dispatchEvent(new CustomEvent('gbex-front-desk-agent', {{ detail: {json} }}));";
-        _ = FrontDeskWebView.CoreWebView2.ExecuteScriptAsync(script);
+        FrontDeskWebView.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(detail));
     }
 
     private sealed record WebCaptureCommand(
