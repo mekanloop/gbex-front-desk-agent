@@ -1,6 +1,5 @@
 using System.IO;
 using System.Diagnostics;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
@@ -70,22 +69,26 @@ public partial class MainWindow : Window
             FrontDeskWebView.CoreWebView2.Settings.IsWebMessageEnabled = true;
             await FrontDeskWebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync($$"""
                 (() => {
+                  const webview = window.chrome && window.chrome.webview;
                   const bridge = {
                     version: '{{App.AgentVersion}}',
                     postMessage(message) {
-                      if (!window.chrome || !window.chrome.webview || typeof window.chrome.webview.postMessage !== 'function') {
+                      if (!webview || typeof webview.postMessage !== 'function') {
                         throw new Error('GBEX native bridge is unavailable.');
                       }
-                      window.chrome.webview.postMessage(message);
+                      webview.postMessage(message);
                     }
                   };
                   Object.defineProperty(window, '__GBEX_FRONT_DESK_AGENT__', { value: bridge, configurable: false });
-                  window.chrome.webview.addEventListener('message', event => {
-                    window.dispatchEvent(new CustomEvent('gbex-front-desk-agent', { detail: event.data }));
-                  });
+                  if (webview && typeof webview.addEventListener === 'function') {
+                    webview.addEventListener('message', event => {
+                      window.dispatchEvent(new CustomEvent('gbex-front-desk-agent', { detail: event.data }));
+                    });
+                  }
                 })();
                 """);
             FrontDeskWebView.CoreWebView2.WebMessageReceived += FrontDeskWebView_WebMessageReceived;
+            FrontDeskWebView.CoreWebView2.NavigationStarting += FrontDeskWebView_NavigationStarting;
             FrontDeskWebView.CoreWebView2.NavigationCompleted += FrontDeskWebView_NavigationCompleted;
             FrontDeskWebView.Source = FrontDeskUri;
             ConnectionStatusText.Text = "GBEX Front Desk paneli açıldı.";
@@ -116,6 +119,45 @@ public partial class MainWindow : Window
     }
 
     private void RefreshDevicesButton_Click(object sender, RoutedEventArgs e) => RefreshDeviceStatus();
+
+    // This is a native command route, intercepted before a page navigation.
+    // It is the reliable fallback when a WebView runtime does not expose the
+    // JavaScript chrome.webview object to the page.
+    private async void FrontDeskWebView_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+    {
+        if (!Uri.TryCreate(e.Uri, UriKind.Absolute, out var request)
+            || request.GetLeftPart(UriPartial.Authority) != FrontDeskUri.GetLeftPart(UriPartial.Authority)
+            || !string.Equals(request.AbsolutePath, "/__gbex_native__/capture", StringComparison.Ordinal)) return;
+
+        e.Cancel = true;
+        if (FrontDeskWebView.CoreWebView2 is null
+            || !Uri.TryCreate(FrontDeskWebView.CoreWebView2.Source, UriKind.Absolute, out var current)
+            || current.GetLeftPart(UriPartial.Authority) != FrontDeskUri.GetLeftPart(UriPartial.Authority))
+        {
+            LastActionText.Text = "Native imza komutu güvenli panel oturumundan gelmedi; başlatılmadı.";
+            return;
+        }
+
+        await ProcessCaptureCommandAsync(new WebCaptureCommand(
+            "gbex-front-desk-web",
+            QueryValue(request, "type") == "identity" ? "capture_identity" : "capture_signature",
+            QueryValue(request, "captureSessionId") ?? string.Empty,
+            QueryValue(request, "accountId") ?? string.Empty,
+            QueryValue(request, "customerName")
+        ));
+    }
+
+    private static string? QueryValue(Uri uri, string key)
+    {
+        foreach (var pair in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separator = pair.IndexOf('=');
+            var encodedKey = separator < 0 ? pair : pair[..separator];
+            if (!string.Equals(Uri.UnescapeDataString(encodedKey), key, StringComparison.Ordinal)) continue;
+            return Uri.UnescapeDataString(separator < 0 ? string.Empty : pair[(separator + 1)..].Replace("+", " "));
+        }
+        return null;
+    }
 
     private void RefreshDeviceStatus()
     {
@@ -154,21 +196,27 @@ public partial class MainWindow : Window
             return;
         }
 
+        await ProcessCaptureCommandAsync(command);
+    }
+
+    private async Task ProcessCaptureCommandAsync(WebCaptureCommand? command)
+    {
         if (command?.Source != "gbex-front-desk-web" || string.IsNullOrWhiteSpace(command.CaptureSessionId) || string.IsNullOrWhiteSpace(command.AccountId))
         {
+            LastActionText.Text = "Native cihaz komutu eksik olduğu için başlatılmadı.";
             return;
         }
 
-        if (_signatureCaptureInProgress) return;
-
         if (command.Action == "capture_identity")
         {
+            NotifyWeb("identity_scan", "accepted", "Kimlik tarama komutu Windows uygulaması tarafından alındı.");
             await BeginIdentityCaptureAsync(command);
             return;
         }
 
         if (command.Action == "capture_signature")
         {
+            if (_signatureCaptureInProgress) return;
             NotifyWeb("signature", "accepted", "Wacom imza komutu Windows uygulaması tarafından alındı.");
             await BeginSignatureCaptureAsync(command);
         }
