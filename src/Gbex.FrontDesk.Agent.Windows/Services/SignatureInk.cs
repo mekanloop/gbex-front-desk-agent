@@ -55,9 +55,15 @@ internal sealed class SignatureInk(int maxX, int maxY, int screenWidth, int scre
         {
             var ink = _points.Where(p => p.Down).ToArray();
             // Ignore hover/release coordinates when validating actual ink.
-            return ink.Length >= 8
-                && ink.Max(p => p.X) - ink.Min(p => p.X) > maxX * 0.01
-                && ink.Max(p => p.Y) - ink.Min(p => p.Y) > maxY * 0.01;
+            if (ink.Length < 3) return false;
+
+            // A valid handwritten signature can be narrow or almost flat.
+            // Requiring both X and Y to exceed 1% of the tablet area rejected
+            // legitimate STU-430 signatures. Still reject a stationary tap.
+            var xSpan = ink.Max(p => p.X) - ink.Min(p => p.X);
+            var ySpan = ink.Max(p => p.Y) - ink.Min(p => p.Y);
+            var movement = Math.Sqrt(xSpan * xSpan + ySpan * ySpan);
+            return movement >= Math.Max(maxX, maxY) * 0.0025;
         }
     }
 

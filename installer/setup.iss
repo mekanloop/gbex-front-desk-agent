@@ -1,7 +1,7 @@
 ; GBEX Front Desk Agent — Windows installer
 
 #ifndef AppVersion
-  #define AppVersion "1.1.7"
+  #define AppVersion "1.1.8"
 #endif
 
 [Setup]

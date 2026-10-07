@@ -78,7 +78,6 @@ internal sealed class WacomStu430SignatureForm : Form
     private Bitmap? _padBitmap;
     private byte[]? _padBitmapData;
     private wgssSTU.encodingMode _encodingMode;
-    private int _penDataMode;
     private bool _completed;
     private bool _closing;
 
@@ -156,39 +155,16 @@ internal sealed class WacomStu430SignatureForm : Form
 
         try
         {
-            var current = _tablet.getPenDataOptionMode();
-            if (current == (int)WacomPenDataMode.None)
-            {
-                try
-                {
-                    _tablet.setPenDataOptionMode((byte)wgssSTU.penDataOptionMode.PenDataOptionMode_TimeCountSequence);
-                    _penDataMode = _tablet.getPenDataOptionMode() == (int)WacomPenDataMode.TimeCount
-                        ? (int)WacomPenDataMode.None
-                        : (int)WacomPenDataMode.TimeCountSequence;
-                    if (_penDataMode == (int)WacomPenDataMode.None)
-                    {
-                        _tablet.setPenDataOptionMode((byte)wgssSTU.penDataOptionMode.PenDataOptionMode_None);
-                    }
-                }
-                catch
-                {
-                    _penDataMode = (int)WacomPenDataMode.None;
-                }
-            }
-            else
-            {
-                _penDataMode = current == (int)WacomPenDataMode.TimeCountSequence
-                    ? (int)WacomPenDataMode.TimeCountSequence
-                    : (int)WacomPenDataMode.None;
-                if (_penDataMode == (int)WacomPenDataMode.None)
-                {
-                    _tablet.setPenDataOptionMode((byte)wgssSTU.penDataOptionMode.PenDataOptionMode_None);
-                }
-            }
+            // The Wacom C# DemoButtons reference capture uses the base
+            // onPenData stream. STU-430 option reports vary by firmware, so
+            // force the portable mode rather than selecting a report stream
+            // that a particular tablet may not dispatch to our event sink.
+            _tablet.setPenDataOptionMode((byte)wgssSTU.penDataOptionMode.PenDataOptionMode_None);
         }
         catch
         {
-            _penDataMode = (int)WacomPenDataMode.None;
+            // Some older firmware does not expose this setting. Its default
+            // report stream is still handled by onPenData below.
         }
     }
 

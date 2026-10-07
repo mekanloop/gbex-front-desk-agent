@@ -18,6 +18,12 @@ internal static class WacomCaptureChecks
             ink.Add(9000, 4900, 0, false);
             Check(!ink.IsMeaningful, "hover cannot make a dot a valid signature");
             ink.Clear();
+            ink.Add(1000, 1000, 120, true);
+            ink.Add(1030, 1010, 120, true);
+            ink.Add(1060, 1020, 120, true);
+            ink.Add(1060, 1020, 0, false);
+            Check(ink.IsMeaningful, "short but real pen stroke accepted");
+            ink.Clear();
             Check(ink.Add(1000, 5500, 100, true) == 0, "button needs release");
             Check(ink.Add(1000, 5500, 0, false) == 1, "confirm button hit");
             Check(ink.Points.Count == 0, "button excluded from ink");
